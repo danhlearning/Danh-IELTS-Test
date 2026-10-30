@@ -3045,7 +3045,7 @@ Answer: A`;
 
       if (this.examImportStatus) {
         this.examImportStatus.style.display = 'block';
-        this.examImportStatus.textContent = `🎉 Đã tạo thành công ${data.questions.length} câu hỏi Trắc nghiệm & Điền từ! Bấm nút màu xanh bên dưới để vào luyện ngay.`;
+        this.examImportStatus.textContent = `🎉 Đã tạo xong ${data.questions.length} câu hỏi! Bấm nút màu xanh lá bên dưới để vào làm bài ngay.`;
       }
     } catch (err) {
       if (this.examImportStatus) {
@@ -3056,15 +3056,19 @@ Answer: A`;
     } finally {
       if (this.btnRunExamConvert) {
         this.btnRunExamConvert.disabled = false;
-        this.btnRunExamConvert.innerHTML = '<span>✨ Chuyển Thành Câu Hỏi Trắc Nghiệm & Điền Từ</span>';
+        this.btnRunExamConvert.innerHTML = '<span>✨ Tạo Câu Hỏi Trắc Nghiệm Ngay</span>';
       }
     }
   }
 
   renderCustomExamPreview() {
     const bank = this.customExamBank || [];
+    const readyBar = document.getElementById('exam-ready-bar');
+    if (readyBar) {
+      readyBar.style.display = bank.length > 0 ? 'flex' : 'none';
+    }
     if (this.examPreviewCountLabel) {
-      this.examPreviewCountLabel.textContent = `📚 Kho đề tự nhập hiện có: ${bank.length} câu`;
+      this.examPreviewCountLabel.textContent = `📚 Đã có sẵn: ${bank.length} câu hỏi`;
     }
     if (this.btnClearCustomBank) {
       this.btnClearCustomBank.style.display = bank.length > 0 ? 'inline-block' : 'none';
@@ -3072,41 +3076,10 @@ Answer: A`;
     if (this.btnStartCustomExam) {
       this.btnStartCustomExam.style.display = bank.length > 0 ? 'block' : 'none';
     }
-    if (!this.examPreviewList) return;
-
-    if (bank.length === 0) {
-      this.examPreviewList.innerHTML = `
-        <div class="mastery-empty-state">
-          <span>📄 Chưa có đề thi nào được nhập. Hãy tải lên Ảnh chụp đề thi, file PDF, file Word (.docx) hoặc bấm "📋 Dán Đề Mẫu" để trải nghiệm ngay!</span>
-        </div>
-      `;
-      return;
+    if (this.examPreviewList) {
+      this.examPreviewList.innerHTML = '';
+      this.examPreviewList.style.display = 'none';
     }
-
-    const modeTagMap = {
-      letter_fill: '🔤 Điền chữ cái',
-      sentence_cloze: '✍️ Điền từ vào câu',
-      meaning_match: '🇻🇳 Chọn từ đúng',
-      word_class: '🏷️ Từ loại',
-      collocation: '🧩 Collocation',
-      preposition: '🎯 Giới từ'
-    };
-
-    this.examPreviewList.innerHTML = '';
-    bank.slice(0, 25).forEach((q, idx) => {
-      const item = document.createElement('div');
-      item.className = 'exam-preview-item';
-      const ansWord = (q.options && q.options[q.correct]) || q.target_word || '';
-      const posTag = this.getWordPOS(ansWord, q);
-      item.innerHTML = `
-        <div class="ep-top">
-          <span class="ep-word">#${idx + 1}. ${ansWord} ${posTag ? `<span class="pos-tag-badge">${posTag}</span> ` : ''}<span style="font-weight:600;color:var(--text-secondary);">(${q.vietnamese || ''})</span></span>
-          <span class="ep-mode-badge">${modeTagMap[q.mode] || 'Trắc nghiệm'}</span>
-        </div>
-        <div class="ep-sentence">${q.sentence || q.prompt || ''}</div>
-      `;
-      this.examPreviewList.appendChild(item);
-    });
   }
 
   getAggregatedWordStats() {

@@ -595,14 +595,17 @@
           <div class="grade-modal-sheet exam-import-modal-sheet">
             <div class="sheet-handle"></div>
             <div class="grade-modal-header">
-              <h3>📄 Chuyển Đề Thi AI (Ảnh / PDF / Word)</h3>
-              <button class="modal-close-icon-btn" id="btn-exam-import-close">✕</button>
+              <h3>📄 Tạo Câu Hỏi Từ Đề Thi</h3>
+              <button class="modal-close-icon-btn" id="btn-exam-import-close" aria-label="Đóng">✕</button>
             </div>
 
-            <!-- Hàng nút thao tác nhanh: Mở Camera Chụp Đề & Chọn File -->
+            <!-- Bước 1: Chọn cách nhập đề thi (Chụp ảnh / Chọn file / Dán chữ) -->
+            <div class="exam-step-guide">Bước 1: Chọn 1 trong 3 cách đưa đề thi vào</div>
+
+            <!-- Cách 1: Mở Camera Chụp Đề -->
             <div class="exam-capture-actions-row">
               <button type="button" class="btn-camera-capture" id="btn-open-exam-camera">
-                <span>📷 Mở Camera Chụp Đề</span>
+                <span>📷 Cách 1: Mở Camera Chụp Ảnh Đề</span>
               </button>
               <input type="file" id="input-exam-camera" accept="image/*" capture="environment" style="display: none;">
             </div>
@@ -620,49 +623,50 @@
               </div>
             </div>
 
-            <!-- Khu vực chọn hoặc kéo thả File Ảnh / PDF / Word -->
+            <!-- Cách 2: Chạm chọn File Ảnh / PDF / Word có sẵn trong máy -->
             <div class="exam-dropzone" id="exam-dropzone">
               <input type="file" id="input-exam-file" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.doc,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" style="display: none;">
+              <div class="dropzone-main-title" id="exam-dropzone-title">📁 Cách 2: Chạm vào đây để chọn File đề thi</div>
               <div class="dropzone-icon-row">
-                <span class="dz-badge">🖼️ Ảnh Đề</span>
-                <span class="dz-badge">📕 PDF</span>
-                <span class="dz-badge">📘 Word (.docx)</span>
+                <span class="dz-badge">🖼️ Ảnh chụp</span>
+                <span class="dz-badge">📕 File PDF</span>
+                <span class="dz-badge">📘 File Word</span>
               </div>
-              <div class="dropzone-main-title" id="exam-dropzone-title">Chạm để chọn File đề thi hoặc kéo thả vào đây</div>
               <div class="exam-selected-file-pill" id="exam-selected-file-pill" style="display: none;">
                 <span id="exam-selected-file-name">de-thi-toeic.pdf</span>
                 <button type="button" id="btn-clear-exam-file" class="btn-clear-file-mini" title="Bỏ chọn file">✕</button>
               </div>
             </div>
 
-            <!-- Ô dán văn bản đề thi trực tiếp hoặc dùng Đề Mẫu (Tinh gọn) -->
+            <!-- Cách 3: Dán chữ đề thi hoặc bấm Đề Mẫu -->
             <div class="exam-text-section">
-              <div class="exam-text-header exam-text-header-compact">
-                <button type="button" class="btn-sample-exam" id="btn-fill-sample-exam">📋 Dán Đề Mẫu Thử Ngay</button>
+              <div class="exam-text-header">
+                <span class="exam-step-label">✍️ Cách 3: Dán nội dung câu hỏi</span>
+                <button type="button" class="btn-sample-exam" id="btn-fill-sample-exam">📋 Dùng Đề Mẫu Thử Ngay</button>
               </div>
-              <textarea id="exam-raw-text-input" class="exam-raw-textarea" rows="2" placeholder="Hoặc dán nhanh câu hỏi / đoạn văn đề thi vào đây..."></textarea>
+              <textarea id="exam-raw-text-input" class="exam-raw-textarea" rows="2" placeholder="Dán câu hỏi tiếng Anh vào đây (hoặc bấm nút Dùng Đề Mẫu bên trên)..."></textarea>
             </div>
 
-            <!-- Nút bấm Chuyển Đổi Đề Thi Bằng AI -->
+            <!-- Bước 2: Nút bấm Tạo Câu Hỏi Bằng AI -->
+            <div class="exam-step-guide">Bước 2: Bấm nút bên dưới để bắt đầu làm bài</div>
+
             <button type="button" class="btn-convert-exam-ai" id="btn-run-exam-convert">
-              <span>✨ Chuyển Thành Câu Hỏi Trắc Nghiệm & Điền Từ</span>
+              <span>✨ Tạo Câu Hỏi Trắc Nghiệm Ngay</span>
             </button>
 
             <!-- Trạng thái xử lý AI -->
             <div class="exam-import-status" id="exam-import-status" style="display: none;"></div>
 
-            <!-- Danh sách câu hỏi đã trích xuất trong Kho Đề Tự Nhập -->
-            <div class="exam-preview-header">
-              <span id="exam-preview-count-label">📚 Kho đề tự nhập hiện có: 0 câu</span>
-              <button type="button" class="btn-clear-custom-bank" id="btn-clear-custom-bank" style="display: none;">🗑️ Xóa kho đề</button>
+            <!-- Khu vực thông báo bộ đề đã sẵn sàng & nút vào làm bài ngay -->
+            <div class="exam-preview-header" id="exam-ready-bar" style="display: none;">
+              <span id="exam-preview-count-label">📚 Đã có sẵn: 0 câu hỏi</span>
+              <button type="button" class="btn-clear-custom-bank" id="btn-clear-custom-bank" style="display: none;">🗑️ Xóa đề cũ</button>
             </div>
-            <div class="exam-preview-list" id="exam-preview-list">
-              <!-- Dynamic preview cards -->
-            </div>
+            <div class="exam-preview-list" id="exam-preview-list" style="display: none;"></div>
 
             <!-- Nút bắt đầu luyện ngay bộ đề vừa tạo -->
             <button type="button" class="btn-start-custom-exam" id="btn-start-custom-exam" style="display: none;">
-              <span>🚀 Vào Thi Thử Bộ Đề Này Ngay</span>
+              <span>🚀 Vào Làm Bài Bộ Đề Này Ngay</span>
             </button>
           </div>
         </div>
