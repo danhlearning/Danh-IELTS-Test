@@ -1,0 +1,16 @@
+{
+  "name": "danh-hoc-ielts-toeic-arena",
+  "version": "3.1.0",
+  "private": true,
+  "description": "Đấu trường luyện từ vựng IELTS & TOEIC tốc độ cao chuẩn iOS 27 Liquid Glass Pro",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node verify_all.js && node test_suite.js && node test_simulation.js && node test_adaptive_learning.js",
+    "lint": "node verify_all.js && node test_suite.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.32.0",
+    "mammoth": "^1.13.0"
+  }
+}

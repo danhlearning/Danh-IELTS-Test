@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" id="meta-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Danh học IELTS">
+  <meta name="theme-color" id="meta-theme-color" content="#ffffff">
+  
+  <!-- Chống lưu Cache trên WebKit/Safari để luôn cập nhật dữ liệu mới nhất -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <!-- Progressive Web App (PWA) cho iPhone iOS -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-512.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <title>Danh học IELTS & TOEIC Arena</title>
+  <meta name="description" content="Đấu trường luyện từ vựng IELTS Band 5.0-7.5+ & TOEIC 400-700 tốc độ cao với thuật toán Adaptive SRS, Chế độ Nghe Phát Âm và Bảng thống kê Mastery Lv.1-Lv.5.">
+  <meta property="og:title" content="Danh học IELTS & TOEIC Arena">
+  <meta property="og:description" content="Đấu trường luyện từ vựng IELTS Band 5.0-7.5+ & TOEIC 400-700 tốc độ cao với thuật toán Adaptive SRS, Chế độ Nghe Phát Âm và Bảng thống kê Mastery Lv.1-Lv.5.">
+  
+  <!-- 2 Font chữ chính: Nunito & Be Vietnam Pro (Google Fonts) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css?v=3.0">
+</head>
+<body>
+
+  <!-- Ambient Light Orbs (Không gian chất lỏng khúc xạ đa tầng iOS 27) -->
+  <div class="ambient-glow orb-1"></div>
+  <div class="ambient-glow orb-2"></div>
+  <div class="ambient-glow orb-3"></div>
+
+  <!-- Universal Mobile & Web Viewport Wrapper -->
+  <div class="desktop-wrapper">
+    
+    <div class="desktop-controls-bar" style="display: none !important;" aria-hidden="true">
+      <div class="device-pill">
+        <span class="pulsing-dot"></span>
+        <span>Responsive Mobile View</span>
+      </div>
+      <button id="btn-view-toggle" class="view-toggle-btn">
+        <span>Tràn màn hình</span>
+      </button>
+    </div>
+
+    <!-- Khung Giao Diện Thích Ứng Mọi Màn Hình Điện Thoại -->
+    <div class="iphone-frame" id="iphone-frame">
+
+      <!-- Màn hình nội dung chính của Game -->
+      <main class="screen-content" id="screen-content">
+
+        <!-- Ẩn hoàn toàn Dynamic Island & Status Bar giả lập (Bảo toàn DOM IDs cho bộ kiểm thử tự động) -->
+        <header class="ios-unified-header" style="display: none !important;" aria-hidden="true">
+          <div class="dynamic-island-drop" id="dynamic-island">
+            <span id="island-drop-icon"></span>
+            <span id="island-drop-title"></span>
+            <span class="island-message" id="island-message"></span>
+          </div>
+        </header>
+
+        <!-- ==================== TẦNG 1: MONITORING ZONE (QUAN SÁT THỤ ĐỘNG) ==================== -->
+        <section class="zone-header">
+          <div class="stats-row">
+            <!-- Cánh Trái (Left Wing): Viên nang 3 Trái tim sinh mệnh đối xứng -->
+            <div class="header-wing-left">
+              <div class="hearts-pill-capsule" title="Sinh mệnh còn lại (Hồi phục sau 4 combo)">
+                <div class="hearts-container" id="hearts-container">
+                  <div class="heart-wrapper" data-heart="1">
+                    <svg class="heart-svg" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                  </div>
+                  <div class="heart-wrapper" data-heart="2">
+                    <svg class="heart-svg" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                  </div>
+                  <div class="heart-wrapper" data-heart="3">
+                    <svg class="heart-svg" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Streak Combo Badge Rực Lửa Holographic (Bảo toàn DOM ID cho test suite, ẩn bằng CSS) -->
+            <div class="streak-pill" id="streak-pill">
+              <svg class="fire-svg" viewBox="0 0 24 24"><path d="M12 2c-.3 0-.6.1-.8.4C9.5 4.6 7 8.3 7 11.5c0 1.2.3 2.3.9 3.2-.2-.5-.3-1-.3-1.6 0-1.7 1-3.2 2.3-4.3.2-.2.5-.2.7 0 .2.2.3.4.2.7-.4 1.3-.2 2.7.5 3.8.4-.7 1-1.3 1.7-1.8.3-.2.6-.1.8.1.1.2.2.4.1.6-.4 1.8-.1 3.5.7 4.9.4.7 1 1.2 1.6 1.7.5-.5.9-1.2 1.1-1.9.3-1.1.2-2.3-.3-3.3-.2-.4 0-.8.4-1 .3-.1.7 0 .9.3 1 1.6 1.2 3.6.6 5.4-.1.4-.3.7-.5 1.1 2.3-1.5 3.8-4.1 3.8-7 0-4-3.4-7.8-6.9-12-.2-.3-.5-.4-.8-.4z"/></svg>
+              <span id="streak-text">0 COMBO</span>
+            </div>
+
+            <!-- Cánh Phải (Right Wing): Cụm điều khiển Chế độ Nghe, Thống kê Mastery, Kho từ, Loa, Theme -->
+            <div class="header-wing-right">
+              <div class="top-actions">
+                <button class="grade-filter-pill-btn" id="btn-grade-filter" title="Chọn Đấu Trường / Chế Độ Học">
+                  <span class="g-icon">🎓</span>
+                  <span id="current-filter-pill-label">Adaptive</span>
+                </button>
+                <button class="icon-btn" id="btn-exam-import" title="Chuyển đề thi Ảnh / PDF / Word thành câu hỏi Trắc nghiệm & Điền từ">
+                  <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                </button>
+                <button class="icon-btn" id="btn-audio-quiz-mode" title="Bật/Tắt Chế độ Nghe Phát Âm (Audio Quiz)">
+                  <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                </button>
+                <button class="icon-btn" id="btn-mastery-stats" title="Bảng thống kê Tiến độ Mastery Lv.1-Lv.5 & Sao lưu JSON">
+                  <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                </button>
+                <button class="icon-btn" id="btn-sound-toggle" title="Bật/Tắt Âm thanh">
+                  <svg id="sound-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+                <button class="icon-btn" id="btn-theme-toggle" title="Chuyển chế độ Sáng/Tối">
+                  <svg id="theme-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tiến trình, Chuỗi mục tiêu ngày, Điểm số & Đồng Hồ Đếm Số -->
+          <div class="progress-subrow">
+            <div class="progress-left-cluster">
+              <span id="progress-text" class="progress-badge">Câu 1/10</span>
+              <button type="button" id="daily-goal-pill" class="daily-goal-pill" title="Mục tiêu câu hỏi hôm nay & Chuỗi ngày học (Bấm để xem thống kê)">
+                <span id="daily-streak-fire">🔥 1 ngày</span>
+                <span class="daily-sep">•</span>
+                <span id="daily-goal-text">0/30</span>
+              </button>
+            </div>
+            
+            <!-- Đếm số thời gian thực (15.0 Giây) -->
+            <div class="countdown-digital-box" id="countdown-digital-box">
+              <svg class="clock-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span id="timer-seconds" class="timer-seconds-badge">15.0s</span>
+            </div>
+
+            <span class="score-display" id="score-display">0 XP</span>
+          </div>
+
+          <!-- Thanh Đếm Ngược Thời Gian Photon Liquid 15 GIÂY -->
+          <div class="timer-container">
+            <div class="timer-bar" id="timer-bar">
+              <div class="timer-plasma-head"></div>
+            </div>
+          </div>
+
+          <!-- Thanh Tiến Độ Vòng Chơi Phân Đoạn Màu (Segmented Round Bar) -->
+          <div class="segmented-round-bar" id="segmented-round-bar" aria-label="Tiến độ các câu trong vòng"></div>
+        </section>
+
+        <!-- ==================== TẦNG 2: QUESTION CONTEXT (VÙNG ĐỌC HIỂU LIQUID GLASS) ==================== -->
+        <section class="zone-question">
+          <div class="question-card" id="question-card">
+            
+            <div class="question-tags">
+              <span class="grade-badge" id="grade-badge">LỚP 6</span>
+              <span class="band-badge" id="band-badge">BAND 7.0</span>
+              <span class="mastery-badge" id="mastery-badge">Lv.1 🌱</span>
+              <span class="mode-badge" id="mode-badge">🔤 Điền chữ cái</span>
+              <span class="topic-badge" id="topic-badge">🌿 Environment</span>
+            </div>
+
+            <p class="prompt-text" id="prompt-text">Điền các chữ cái còn thiếu vào từ vựng:</p>
+
+            <!-- Vùng hình ảnh minh họa từ vựng bút chì (Pencil Art từ Danh_English_Tutor) -->
+            <div class="vocab-image-container" id="vocab-image" style="display: none;">
+              <img id="vocab-img" src="" alt="Minh họa từ vựng" loading="lazy">
+            </div>
+
+            <!-- Ô chữ cái nổi 3D Liquid Crystal (cho chế độ Điền chữ cái) -->
+            <div class="masked-word-container" id="letter-box-container" style="display: none;">
+              <!-- Dynamic Letter Boxes -->
+            </div>
+
+            <!-- Bảng Điều Khiển Sóng Âm Chế Độ Nghe Phát Âm (Audio Listening Quiz) -->
+            <div class="audio-quiz-panel" id="audio-quiz-panel" style="display: none;">
+              <div class="audio-wave-bars" id="audio-wave-bars">
+                <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <div class="audio-quiz-controls">
+                <button type="button" class="btn-audio-quiz-main" id="btn-audio-quiz-play" title="Nghe phát âm chuẩn (0.92x)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.2"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                  <span>Nghe chuẩn</span>
+                </button>
+                <button type="button" class="btn-audio-quiz-slow" id="btn-audio-quiz-slow" title="Nghe phát âm chậm rõ từng âm (0.68x)">
+                  <span>🐢 Chậm 0.7x</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Câu văn học thuật / Nghĩa tiếng Việt -->
+            <h2 class="question-main-text" id="question-main-text">
+              Loading question...
+            </h2>
+
+            <!-- Dải thông tin bổ trợ học thuật (cân đối bố cục không gian) -->
+            <div class="question-meta-footer" id="question-meta-footer">
+              <span class="phonetic-guide" id="phonetic-guide" style="display: none;"></span>
+              <span class="academic-hint-pill" id="academic-hint-pill">💡 Academic Vocabulary</span>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ==================== TẦNG 3: THUMB ACTION ARENA (VÙNG THAO TÁC CÔNG THÁI HỌC VÀNG) ==================== -->
+        <section class="zone-actions">
+          
+          <!-- 3 Power-ups Cứu Cánh Kính Thủy Tinh (Liquid Glass Pills) -->
+          <div class="powerups-row">
+            <button class="powerup-btn" id="btn-fifty" title="Loại bỏ 2 phương án sai">
+              <svg class="p-icon" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>50:50</span>
+            </button>
+            <button class="powerup-btn" id="btn-freeze" title="Đóng băng thời gian 3 giây">
+              <svg class="p-icon" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="2.2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>
+              <span>Đóng băng</span>
+            </button>
+            <button class="powerup-btn" id="btn-hint" title="Xem gợi ý nghĩa tiếng Việt">
+              <svg class="p-icon" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+              <span>Gợi ý</span>
+            </button>
+          </div>
+
+          <!-- 4 Nút Đáp Án Spatial Touch Kích Thước Lớn Chuẩn Ngón Cái (Tactile Buttons 60px) -->
+          <div class="answers-grid" id="answers-container">
+            <!-- Dynamic 4 Buttons -->
+          </div>
+
+        </section>
+
+        <!-- Ngăn Kéo Phản Hồi Tinh Gọn (Hỗ trợ Vuốt xuống/trái để qua câu & Gạt Auto-Next) -->
+        <div class="feedback-drawer" id="feedback-drawer">
+          <div class="drawer-handle" title="Vuốt xuống hoặc sang trái để qua câu tiếp theo"></div>
+          <div class="feedback-header-row">
+            <div class="feedback-title" id="feedback-title">✓ CHÍNH XÁC!</div>
+            <button type="button" class="btn-auto-next-pill active" id="btn-auto-next-toggle" title="Bật/Tắt tự động chuyển câu khi trả lời Đúng">
+              <span>⚡ Tự qua: BẬT</span>
+            </button>
+          </div>
+          <div class="feedback-vietnamese" id="feedback-vietnamese">tàn phá, hủy hoại</div>
+          
+          <!-- Giải thích ngắn gọn, súc tích, dễ hiểu -->
+          <p class="feedback-explanation" id="feedback-explanation">
+            'wreak havoc' là academic collocation chuẩn band 7+.
+          </p>
+
+          <!-- Hộp Phân Biệt Cặp Từ Dễ Nhầm & Cảnh Báo Bẫy Phòng Thi -->
+          <div class="feedback-confusable-box" id="feedback-confusable-box" style="display: none;"></div>
+
+          <!-- Ẩn hoàn toàn Writing Task 2 theo yêu cầu tinh gọn (bảo toàn DOM IDs cho test suite) -->
+          <div class="feedback-exam-context hidden-exam-context" id="feedback-exam-context" style="display: none !important;" aria-hidden="true">
+            <span class="exam-task-label" id="exam-task-label">Writing Task 2</span>
+            <div class="exam-sentence-quote" id="exam-sentence-quote">"The chart illustrates a precipitous decline."</div>
+            <div class="common-mistake-text" id="common-mistake-text">💡 Thí sinh hay nhầm chính tả.</div>
+          </div>
+
+          <button class="feedback-btn" id="btn-next">
+            <span>Tiếp tục</span>
+            <svg class="next-arrow-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <!-- Modal Kết Thúc Trận Đấu & Xếp Hạng Band -->
+        <div class="modal-overlay" id="modal-overlay">
+          <div class="modal-card">
+            <div class="victory-trophy">🏆</div>
+            <h2 class="band-grade-title" id="band-grade">IELTS 7.5+ Speed Demon</h2>
+
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="val" id="final-score">0 XP</span>
+                <span class="lbl">TỔNG ĐIỂM</span>
+              </div>
+              <div class="stat-box">
+                <span class="val" id="max-streak">0</span>
+                <span class="lbl">CHUỖI MAX</span>
+              </div>
+              <div class="stat-box">
+                <span class="val" id="avg-time">0.0s</span>
+                <span class="lbl">TỐC ĐỘ TB</span>
+              </div>
+              <div class="stat-box">
+                <span class="val" id="accuracy-rate">0%</span>
+                <span class="lbl">ĐỘ CHÍNH XÁC</span>
+              </div>
+            </div>
+
+            <!-- Nút Mở Kho Ứng Dụng Phòng Thi & Thống Kê Tiến Độ Mastery -->
+            <div class="victory-secondary-actions">
+              <button class="btn-vault-open" id="btn-vault-open">
+                <svg class="btn-vault-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg>
+                <span>Sổ Tay Vừa Luyện</span>
+              </button>
+              <button class="btn-vault-open btn-mastery-open-alt" id="btn-victory-mastery">
+                <svg class="btn-vault-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <span>Tiến Độ Mastery Lv.1-5</span>
+              </button>
+            </div>
+
+            <!-- Bảng Emoji Kết Quả Kiểu Wordle -->
+            <div class="wordle-card" id="wordle-grid">
+              🟩🟩🟩🟩🟩<br>🟩🟨🟩🟩🟩
+            </div>
+
+            <button class="btn-share" id="btn-share">
+              <svg class="share-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+              <span>Copy Kết Quả Khoe Bạn Bè</span>
+            </button>
+
+            <button class="btn-replay" id="btn-replay">
+              <span>Chơi Lại Vòng Mới 🚀</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Modal Sổ Tay Ứng Dụng Phòng Thi (Exam Application Vault) -->
+        <div class="vault-overlay" id="vault-overlay">
+          <div class="vault-header">
+            <h3>📖 Sổ Tay Từ Vựng Vừa Luyện</h3>
+            <button class="vault-close-btn" id="btn-vault-close">✕</button>
+          </div>
+          <div class="vault-list" id="vault-list">
+            <!-- Danh sách các từ và câu ứng dụng -->
+          </div>
+        </div>
+
+        <!-- Modal Chọn Khối Lớp & Band IELTS (Grade & Band Selection Sheet) -->
+        <div class="grade-modal-overlay" id="grade-modal-overlay">
+          <div class="grade-modal-sheet">
+            <div class="sheet-handle"></div>
+            <div class="grade-modal-header">
+              <h3>🎯 Đấu Trường Từ Vựng Adaptive</h3>
+              <button class="modal-close-icon-btn" id="btn-grade-modal-close">✕</button>
+            </div>
+            <p class="grade-modal-subtitle">Thuật toán tự động học theo phản xạ • IELTS Band 5.0-7.5 & TOEIC 400-700</p>
+            
+            <div class="grade-options-list">
+              <button class="grade-option-btn active" data-filter="all">
+                <div class="g-info">
+                  <span class="g-title">🌐 Hỗn Hợp Toàn Bộ (Adaptive Mixed Arena)</span>
+                  <span class="g-desc">Toàn bộ 761 câu hỏi IELTS & TOEIC 400-700 • Thuật toán tự điều phối độ khó</span>
+                </div>
+                <span class="g-badge">761 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="audio">
+                <div class="g-info">
+                  <span class="g-title">🎧 Luyện Nghe Phát Âm (Audio Listening Quiz)</span>
+                  <span class="g-desc">Nghe giọng đọc chuẩn & chậm 0.7x để đoán nghĩa tiếng Việt hoặc nhận diện từ</span>
+                </div>
+                <span class="g-badge">Audio AI</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="weak">
+                <div class="g-info">
+                  <span class="g-title">🔥 Ôn Tập Từ Yếu & Củng Cố SRS (Weak Words)</span>
+                  <span class="g-desc">Tập trung xoáy sâu các từ bạn từng làm sai hoặc đang ở mức Lv.1 - Lv.2</span>
+                </div>
+                <span class="g-badge" id="weak-filter-count-badge">Ưu tiên</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="custom_exam">
+                <div class="g-info">
+                  <span class="g-title">📄 Đề Thi Tự Nhập (Ảnh / PDF / Word AI)</span>
+                  <span class="g-desc">Luyện bộ câu hỏi trắc nghiệm & điền từ chuyển đổi từ file đề thi của bạn</span>
+                </div>
+                <span class="g-badge" id="custom-exam-count-badge">Tải đề</span>
+              </button>
+
+              <div class="grade-category-divider">💼 CHUYÊN ĐỀ TOEIC 400 - 700 THƯƠNG MẠI & CÔNG SỞ (600 CÂU)</div>
+
+              <button class="grade-option-btn" data-filter="part5_speed">
+                <div class="g-info">
+                  <span class="g-title">⚡ Đấu Trường Tốc Độ TOEIC Part 5 (Speed Drill • 12s/câu)</span>
+                  <span class="g-desc">Mô phỏng áp lực phòng thi Part 5 (Từ loại, Giới từ, Collocation & Ngữ cảnh) + Dự đoán điểm TOEIC</span>
+                </div>
+                <span class="g-badge">Part 5</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="toeic">
+                <div class="g-info">
+                  <span class="g-title">💼 Toàn Bộ TOEIC 400 - 700+ (Đủ 6 Chế Độ/Từ)</span>
+                  <span class="g-desc">100 từ vựng cốt lõi Part 5, 6, 7 trải dài từ Band 400 đến 700+</span>
+                </div>
+                <span class="g-badge">600 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="toeic400">
+                <div class="g-info">
+                  <span class="g-title">🟢 TOEIC 400 - 450 • Nền Tảng Văn Phòng, Bán Lẻ & Du Lịch</span>
+                  <span class="g-desc">25 từ thiết yếu: Lịch hẹn, Biên lai, Thu ngân, Hành lý, Đặt hàng, Sảnh chờ, Vé...</span>
+                </div>
+                <span class="g-badge">150 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="toeic500">
+                <div class="g-info">
+                  <span class="g-title">🔵 TOEIC 500 - 550 • Trung Cấp Kế Toán, Nhân Sự & Vận Hành</span>
+                  <span class="g-desc">25 từ trọng tâm: Hợp đồng, Chi phí, Tuyển dụng, Thanh tra, Chính sách, Lô hàng...</span>
+                </div>
+                <span class="g-badge">150 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="toeic600">
+                <div class="g-info">
+                  <span class="g-title">🟣 TOEIC 600 - 650 • Khá Giỏi Sản Xuất, Bảo Trì & Chuỗi Cung Ứng</span>
+                  <span class="g-desc">25 từ chuyên sâu: Nghị sự, Lỗi kỹ thuật, Dự toán, Bảo trì, Đại diện, Vị trí trống...</span>
+                </div>
+                <span class="g-badge">150 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="toeic700">
+                <div class="g-info">
+                  <span class="g-title">🟠 TOEIC 700+ • Bứt Phá Kiểm Toán, M&A, Pháp Lý & Chiến Lược</span>
+                  <span class="g-desc">25 từ cao cấp: Phân bổ vốn, Kiểm toán, Hợp nhất, Chênh lệch, Khả thi, Độc quyền...</span>
+                </div>
+                <span class="g-badge">150 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="ielts">
+                <div class="g-info">
+                  <span class="g-title">🎓 IELTS & SGK Phổ Thông (Lớp 6 - 12)</span>
+                  <span class="g-desc">161 câu học thuật Global Success • Band 5.0 - 7.5+</span>
+                </div>
+                <span class="g-badge">161 câu</span>
+              </button>
+              
+              <div class="grade-category-divider">KHỐI TRUNG HỌC CƠ SỞ (THCS)</div>
+              
+              <button class="grade-option-btn" data-filter="g6">
+                <div class="g-info">
+                  <span class="g-title">🎒 Tiếng Anh Lớp 6 • Band 5.0</span>
+                  <span class="g-desc">Trường học, Nhà cửa, Bạn bè, Thế giới xanh, Người máy</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="g7">
+                <div class="g-info">
+                  <span class="g-title">🎨 Tiếng Anh Lớp 7 • Band 5.0 - 5.5</span>
+                  <span class="g-desc">Sở thích, Sống khỏe, Phục vụ cộng đồng, Năng lượng, Giao thông</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="g8">
+                <div class="g-info">
+                  <span class="g-title">🏕️ Tiếng Anh Lớp 8 • Band 5.5 - 6.0</span>
+                  <span class="g-desc">Thanh thiếu niên, Dân tộc, Phong tục tập quán, Thiên tai, Khoa học</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="g9">
+                <div class="g-info">
+                  <span class="g-title">🏙️ Tiếng Anh Lớp 9 • Band 6.0 - 6.5</span>
+                  <span class="g-desc">Làng nghề, Cuộc sống thành thị, Di sản quá khứ, Quản lý thời gian</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <div class="grade-category-divider">KHỐI TRUNG HỌC PHỔ THÔNG (THPT) & IELTS</div>
+
+              <button class="grade-option-btn" data-filter="g10">
+                <div class="g-info">
+                  <span class="g-title">🌿 Tiếng Anh Lớp 10 • Band 6.5 - 7.0</span>
+                  <span class="g-desc">Gia đình & Bình đẳng giới, Bảo vệ sinh thái, Dấu chân carbon, Du lịch sinh thái</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="g11">
+                <div class="g-info">
+                  <span class="g-title">⚡ Tiếng Anh Lớp 11 • Band 7.0</span>
+                  <span class="g-desc">Sống thọ, Đô thị thông minh, Hiệu ứng nhà kính, Tự chủ độc lập</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="g12">
+                <div class="g-info">
+                  <span class="g-title">🏆 Tiếng Anh Lớp 12 • Band 7.0 - 7.5</span>
+                  <span class="g-desc">Kiên cường, Đa văn hóa, Đô thị hóa, Trí tuệ nhân tạo (AI), Tuyệt chủng sinh vật</span>
+                </div>
+                <span class="g-badge">18 câu</span>
+              </button>
+
+              <div class="grade-category-divider">CHUYÊN ĐỀ MỤC TIÊU BAND ĐIỂM</div>
+
+              <button class="grade-option-btn" data-filter="band7">
+                <div class="g-info">
+                  <span class="g-title">🎯 Bứt Phá Điểm Band 7.0 - 7.5</span>
+                  <span class="g-desc">Tập trung toàn bộ từ vựng học thuật đỉnh cao phục vụ Writing Task 2 & Speaking</span>
+                </div>
+                <span class="g-badge">41 câu</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Bảng Thống Kê Tiến Độ Mastery Lv.1 - Lv.5 & Sao Lưu JSON -->
+        <div class="grade-modal-overlay" id="mastery-modal-overlay">
+          <div class="grade-modal-sheet mastery-modal-sheet">
+            <div class="sheet-handle"></div>
+            <div class="grade-modal-header">
+              <h3>📊 Hồ Sơ Trí Nhớ & Sổ Tay Cá Nhân</h3>
+              <button class="modal-close-icon-btn" id="btn-mastery-modal-close">✕</button>
+            </div>
+            <p class="grade-modal-subtitle">Theo dõi độ nhớ Spaced Repetition • Chạm vào bậc Lv.1-5 để lọc từ</p>
+
+            <!-- Thẻ Mục Tiêu Ngày & Chuỗi Ngày Học (Daily Goal & Streak Card) -->
+            <div class="daily-tracker-card" id="daily-tracker-card">
+              <div class="dt-top-row">
+                <div class="dt-streak-info">
+                  <span class="dt-streak-badge" id="modal-daily-streak">🔥 Chuỗi 1 ngày</span>
+                  <span class="dt-progress-label" id="modal-daily-progress-lbl">Hôm nay: 0 / 30 câu</span>
+                </div>
+                <div class="dt-goal-selector" id="daily-goal-selector">
+                  <button type="button" class="dt-goal-btn" data-goal="15">15c</button>
+                  <button type="button" class="dt-goal-btn active" data-goal="30">30c</button>
+                  <button type="button" class="dt-goal-btn" data-goal="50">50c</button>
+                </div>
+              </div>
+              <div class="dt-bar-track">
+                <div class="dt-bar-fill" id="modal-daily-bar-fill" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <!-- 4 Chỉ số tổng quan -->
+            <div class="mastery-kpi-grid">
+              <div class="mastery-kpi-card" data-kpi-filter="all" title="Xem toàn bộ kho từ">
+                <span class="m-kpi-val" id="stat-total-learned">0</span>
+                <span class="m-kpi-lbl">Từ đã học</span>
+              </div>
+              <div class="mastery-kpi-card" data-kpi-filter="all">
+                <span class="m-kpi-val" id="stat-avg-retention">25%</span>
+                <span class="m-kpi-lbl">Độ nhớ TB</span>
+              </div>
+              <div class="mastery-kpi-card" data-kpi-filter="4" title="Lọc các từ đã thành thạo">
+                <span class="m-kpi-val" id="stat-mastered-count">0</span>
+                <span class="m-kpi-lbl">Lv.4–5 💎</span>
+              </div>
+              <div class="mastery-kpi-card" data-kpi-filter="weak" title="Lọc các từ hay sai cần ôn gấp">
+                <span class="m-kpi-val" id="stat-weak-count">0</span>
+                <span class="m-kpi-lbl">Từ yếu 🔥</span>
+              </div>
+            </div>
+
+            <!-- Biểu đồ phân bổ 5 cấp độ Mastery (Tương tác bấm để lọc) -->
+            <div class="mastery-bars-box" id="mastery-bars-box">
+              <!-- Dynamic Level 1-5 progress bars -->
+            </div>
+
+            <!-- Ô tìm kiếm nhanh sổ tay từ vựng -->
+            <div class="mastery-search-box">
+              <input type="search" id="mastery-search-input" class="mastery-search-input" placeholder="🔍 Tìm từ tiếng Anh, nghĩa tiếng Việt hoặc chủ đề...">
+            </div>
+
+            <!-- Bộ lọc danh sách từ theo cấp độ & Nút luyện ngay -->
+            <div class="mastery-filter-row" id="mastery-filter-tabs">
+              <button type="button" class="m-tab-btn active" data-mlevel="all">Tất cả</button>
+              <button type="button" class="m-tab-btn" data-mlevel="weak">🔥 Từ yếu</button>
+              <button type="button" class="m-tab-btn" data-mlevel="1">Lv.1 🌱</button>
+              <button type="button" class="m-tab-btn" data-mlevel="2">Lv.2 🌿</button>
+              <button type="button" class="m-tab-btn" data-mlevel="3">Lv.3 🌸</button>
+              <button type="button" class="m-tab-btn" data-mlevel="4">Lv.4 ⭐</button>
+              <button type="button" class="m-tab-btn" data-mlevel="5">Lv.5 💎</button>
+            </div>
+
+            <!-- Danh sách từ vựng chi tiết -->
+            <div class="mastery-word-list" id="mastery-word-list">
+              <!-- Dynamic word items -->
+            </div>
+
+            <!-- Cụm hành động: Luyện Từ Yếu & Sao lưu / Khôi phục JSON -->
+            <div class="mastery-footer-actions">
+              <button type="button" class="btn-practice-weak" id="btn-practice-weak-now">
+                <span>🔥 Luyện Ngay 10 Câu Từ Yếu / Mới</span>
+              </button>
+              <div class="backup-json-row">
+                <button type="button" class="btn-json-io" id="btn-export-json" title="Tải file sao lưu tiến độ học tập (.json)">
+                  <span>⬇ Xuất dữ liệu JSON</span>
+                </button>
+                <button type="button" class="btn-json-io" id="btn-import-json" title="Khôi phục tiến độ từ file .json">
+                  <span>⬆ Nhập dữ liệu JSON</span>
+                </button>
+                <input type="file" id="input-import-json" accept=".json,application/json" style="display: none;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Chuyển Đề Thi Ảnh / PDF / Word Thành Trắc Nghiệm & Điền Từ (AI Exam Importer) -->
+        <div class="grade-modal-overlay" id="exam-import-modal-overlay">
+          <div class="grade-modal-sheet exam-import-modal-sheet">
+            <div class="sheet-handle"></div>
+            <div class="grade-modal-header">
+              <h3>📄 Chuyển Đề Thi AI (Ảnh / PDF / Word)</h3>
+              <button class="modal-close-icon-btn" id="btn-exam-import-close">✕</button>
+            </div>
+            <p class="grade-modal-subtitle">Tải lên đề thi chụp ảnh, PDF hoặc Word (.docx) để AI tự động tạo câu hỏi Trắc nghiệm & Điền từ</p>
+
+            <!-- Khu vực chọn hoặc kéo thả File Ảnh / PDF / Word -->
+            <div class="exam-dropzone" id="exam-dropzone">
+              <input type="file" id="input-exam-file" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.doc,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" style="display: none;">
+              <div class="dropzone-icon-row">
+                <span class="dz-badge">🖼️ Ảnh Đề</span>
+                <span class="dz-badge">📕 PDF</span>
+                <span class="dz-badge">📘 Word (.docx)</span>
+              </div>
+              <div class="dropzone-main-title" id="exam-dropzone-title">Chạm để chọn File đề thi hoặc kéo thả vào đây</div>
+              <div class="dropzone-sub-hint" id="exam-dropzone-sub">Hỗ trợ ảnh chụp trang đề thi, file PDF, Word (.docx) hoặc Text (.txt)</div>
+              <div class="exam-selected-file-pill" id="exam-selected-file-pill" style="display: none;">
+                <span id="exam-selected-file-name">de-thi-toeic.pdf</span>
+                <button type="button" id="btn-clear-exam-file" class="btn-clear-file-mini" title="Bỏ chọn file">✕</button>
+              </div>
+            </div>
+
+            <!-- Ô dán văn bản đề thi trực tiếp hoặc dùng Đề Mẫu -->
+            <div class="exam-text-section">
+              <div class="exam-text-header">
+                <span>✍️ Hoặc dán nội dung câu hỏi / bài đọc / danh sách từ:</span>
+                <button type="button" class="btn-sample-exam" id="btn-fill-sample-exam">📋 Dán Đề Mẫu</button>
+              </div>
+              <textarea id="exam-raw-text-input" class="exam-raw-textarea" rows="3" placeholder="Ví dụ:&#10;1. All employees must comply ____ the new safety regulations.&#10;A. with   B. to   C. for   D. on&#10;Hoặc dán đoạn văn Reading / bảng từ vựng tiếng Anh..."></textarea>
+            </div>
+
+            <!-- Tùy chọn Chế độ câu hỏi & Số lượng câu -->
+            <div class="exam-config-row">
+              <div class="exam-config-group">
+                <span class="cfg-label">Dạng câu hỏi tạo ra:</span>
+                <div class="cfg-pills" id="exam-mode-selector">
+                  <button type="button" class="cfg-pill-btn active" data-emode="mixed">⚡ Trắc nghiệm + Điền từ</button>
+                  <button type="button" class="cfg-pill-btn" data-emode="mcq_only">📝 Chỉ Trắc nghiệm</button>
+                  <button type="button" class="cfg-pill-btn" data-emode="fill_only">🔤 Điền từ / Chữ cái</button>
+                </div>
+              </div>
+              <div class="exam-config-group">
+                <span class="cfg-label">Số câu:</span>
+                <div class="cfg-pills" id="exam-count-selector">
+                  <button type="button" class="cfg-count-btn active" data-ecount="10">10 câu</button>
+                  <button type="button" class="cfg-count-btn" data-ecount="15">15 câu</button>
+                  <button type="button" class="cfg-count-btn" data-ecount="20">20 câu</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Nút bấm Chuyển Đổi Đề Thi Bằng AI -->
+            <button type="button" class="btn-convert-exam-ai" id="btn-run-exam-convert">
+              <span>✨ Chuyển Thành Câu Hỏi Trắc Nghiệm & Điền Từ</span>
+            </button>
+
+            <!-- Trạng thái xử lý AI -->
+            <div class="exam-import-status" id="exam-import-status" style="display: none;"></div>
+
+            <!-- Danh sách câu hỏi đã trích xuất trong Kho Đề Tự Nhập -->
+            <div class="exam-preview-header">
+              <span id="exam-preview-count-label">📚 Kho đề tự nhập hiện có: 0 câu</span>
+              <button type="button" class="btn-clear-custom-bank" id="btn-clear-custom-bank" style="display: none;">🗑️ Xóa kho đề</button>
+            </div>
+            <div class="exam-preview-list" id="exam-preview-list">
+              <!-- Dynamic preview cards -->
+            </div>
+
+            <!-- Nút bắt đầu luyện ngay bộ đề vừa tạo -->
+            <button type="button" class="btn-start-custom-exam" id="btn-start-custom-exam" style="display: none;">
+              <span>🚀 Vào Thi Thử Bộ Đề Này Ngay</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Công tắc Taptic Engine ẩn hỗ trợ rung vật lý (Haptic Feedback) trên iOS 17.4+ / iOS 18+ Safari -->
+        <label id="ios-haptic-trigger" for="ios-haptic-switch" aria-hidden="true" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;">
+          <input type="checkbox" id="ios-haptic-switch" switch>
+        </label>
+
+        <!-- Canvas Pháo Hoa Giấy Confetti -->
+        <canvas id="confetti-canvas"></canvas>
+
+        <!-- iOS 17/18/27 Home Indicator Bar (Thanh Vuốt Đáy Màn Hình) -->
+        <div class="home-indicator"></div>
+
+      </main>
+    </div>
+
+  </div>
+
+  <!-- Nạp Dữ Liệu Từ Vựng & Hình Ảnh Pencil & Sound Engine & Logic Game (Auto-Cache Busting v3.0) -->
+  <script src="data.js?v=3.0"></script>
+  <script src="vocab-images.js?v=3.0"></script>
+  <script src="sound.js?v=3.0"></script>
+  <script src="app.js?v=3.0"></script>
+  <script>
+    // 1. WebKit bfcache (Back-Forward Cache): Khi mở lại trang từ bộ nhớ nền Safari / WebKit, nạp lại dữ liệu mới nhất
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    });
+
+    // 2. Tự động kiểm tra và cập nhật Service Worker ngay lập tức cho WebKit / Safari
+    if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js?v=3.0').then(reg => {
+          reg.update();
+        }).catch(() => {});
+      });
+
+      // Tự động reload khi có phiên bản Service Worker mới được kích hoạt
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
+      // Khi người dùng chuyển tab hoặc mở lại từ màn hình khóa điện thoại
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.serviceWorker.ready.then(reg => reg.update()).catch(() => {});
+        }
+      });
+    }
+  </script>
+</body>
+</html>
