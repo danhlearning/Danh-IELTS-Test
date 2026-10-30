@@ -87,10 +87,256 @@ class GameEngine {
     this.initDOMElements();
     this.bindEvents();
     this.applyPersistedSettings();
+    this.preloadedImageCache = new Map();
+    this.preloadedQuestionCache = new Map();
+
     this.updateGradeFilterUI();
     this.updateDailyTrackerUI();
     this.updateAutoNextUI();
     this.renderCustomExamPreview();
+  }
+
+  // Từ điển & Bộ suy luận Loại Từ (Part of Speech: (n), (v), (adj), (adv), (prep), (phr)) chuẩn học thuật
+  getWordPOS(word, q = null) {
+    const raw = String(word || '').trim();
+    if (!raw) return '';
+    // Bỏ qua nếu là ký tự đơn (chế độ letter_fill) hoặc chuỗi có dấu tiếng Việt dài (nghĩa tiếng Việt trong Audio Quiz)
+    if (/^[a-zA-Z](\s*-\s*[a-zA-Z])*$/.test(raw)) return '';
+    if (/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/i.test(raw)) return '';
+
+    const w = raw.toLowerCase().replace(/^to\s+/i, '').trim();
+    const preps = new Set([
+      'in', 'on', 'at', 'to', 'for', 'with', 'from', 'of', 'by', 'into', 'upon',
+      'about', 'against', 'between', 'among', 'within', 'without', 'through',
+      'during', 'despite', 'throughout', 'over', 'under', 'across', 'toward',
+      'towards', 'prior to', 'instead of', 'except for', 'regardless of',
+      'according to', 'due to', 'because of', 'in spite of', 'on behalf of'
+    ]);
+    if (preps.has(w)) return '(prep)';
+
+    const cleanW = w.replace(/\s+(to|for|with|on|in|of|from|at|by|into|about|upon|against|over)$/i, '').trim();
+
+    if (cleanW.includes(' ')) {
+      if (/^(make|take|have|give|get|do|pay|play|keep|put|set|bring|carry|come|go|look|run|turn|work|find|point|hold|break|call|cut|fill|hand|catch|bear|wreak)\b/.test(cleanW)) {
+        return '(v.phr)';
+      }
+      return '(n.phr)';
+    }
+
+    const posDict = {
+      uniform: '(n)', pollution: '(n)', appliance: '(n)', volunteer: '(n/v)', turbine: '(n)',
+      creativity: '(n)', concentrate: '(v)', landslide: '(n)', punctual: '(adj)', artisan: '(n)',
+      monument: '(n)', qualification: '(n)', breadwinner: '(n)', biodiversity: '(n)',
+      discrimination: '(n)', infrastructure: '(n)', 'self-reliant': '(adj)', apprenticeship: '(n)',
+      perseverance: '(n)', algorithm: '(n)', biodegradable: '(adj)', waterfall: '(n)',
+      landmark: '(n)', housework: '(n)', sunburn: '(n)', pavement: '(n)', ancestor: '(n)',
+      bargain: '(n/v)', itinerary: '(n)', ecotourism: '(n)', liveable: '(adj)', resilient: '(adj)',
+      multicultural: '(adj)', longevity: '(n)', emission: '(n)', deforestation: '(n)',
+      sustainable: '(adj)', renewable: '(adj)', preserve: '(v)', conserve: '(v)',
+      contaminate: '(v)', deplete: '(v)', mitigate: '(v)', alleviate: '(v)', exacerbate: '(v)',
+      deteriorate: '(v)', proliferate: '(v)', fluctuate: '(v)', stagnate: '(v)', plummet: '(v)',
+      skyrocket: '(v)', surpass: '(v)', exceed: '(v)', predominate: '(v)', allocate: '(v)',
+      reimburse: '(v)', postpone: '(v)', supervise: '(v)', terminate: '(v)', comply: '(v)',
+      abide: '(v)', adhere: '(v)', negotiate: '(v)', collaborate: '(v)', implement: '(v)',
+      delegate: '(v/n)', recruit: '(v/n)', audit: '(n/v)', merge: '(v)', acquire: '(v)',
+      subsidize: '(v)', waive: '(v)', expedite: '(v)', streamline: '(v)', overhaul: '(v/n)',
+      scrutinize: '(v)', rectify: '(v)', jeopardize: '(v)', undermine: '(v)', foster: '(v)',
+      bolster: '(v)', cultivate: '(v)', inhibit: '(v)', deter: '(v)', hinder: '(v)',
+      impede: '(v)', curb: '(v)', trigger: '(v)', prompt: '(v/adj)', promptly: '(adv)',
+      stem: '(v)', yield: '(v/n)', encompass: '(v)', comprise: '(v)', constitute: '(v)',
+      entail: '(v)', warrant: '(v/n)', mandate: '(n/v)', authorize: '(v)', verify: '(v)',
+      confirm: '(v)', notify: '(v)', commute: '(v/n)', embark: '(v)', participate: '(v)',
+      immerse: '(v)', indulge: '(v)', refrain: '(v)', abstain: '(v)', cope: '(v)',
+      tentative: '(adj)', tentatively: '(adv)', stringent: '(adj)', contingent: '(adj)',
+      eligible: '(adj)', prospective: '(adj)', confidential: '(adj)', proprietary: '(adj)',
+      mandatory: '(adj)', compulsory: '(adj)', obligatory: '(adj)', voluntary: '(adj)',
+      optional: '(adj)', complimentary: '(adj)', lucrative: '(adj)', profitable: '(adj)',
+      feasible: '(adj)', viable: '(adj)', plausible: '(adj)', tangible: '(adj)',
+      intangible: '(adj)', obsolete: '(adj)', redundant: '(adj)', vacant: '(adj)',
+      fragile: '(adj)', durable: '(adj)', versatile: '(adj)', portable: '(adj)',
+      affordable: '(adj)', 'cost-effective': '(adj)', ubiquitous: '(adj)', prevalent: '(adj)',
+      pervasive: '(adj)', rampant: '(adj)', unprecedented: '(adj)', indispensable: '(adj)',
+      integral: '(adj)', paramount: '(adj)', pivotal: '(adj)', crucial: '(adj)', vital: '(adj)',
+      detrimental: '(adj)', adverse: '(adj)', beneficial: '(adj)', conducive: '(adj)',
+      susceptible: '(adj)', vulnerable: '(adj)', prone: '(adj)', immune: '(adj)',
+      exempt: '(adj)', liable: '(adj)', accountable: '(adj)', adjacent: '(adj)',
+      unanimous: '(adj)', preliminary: '(adj)', subsequent: '(adj)', simultaneous: '(adj)',
+      spontaneous: '(adj)', rigorous: '(adj)', thorough: '(adj)', meticulous: '(adj)',
+      diligent: '(adj)', proficient: '(adj)', competent: '(adj)', adept: '(adj)',
+      renowned: '(adj)', eminent: '(adj)', prominent: '(adj)', prestigious: '(adj)',
+      notorious: '(adj)', affluent: '(adj)', prosperous: '(adj)', impoverished: '(adj)',
+      schedule: '(n/v)', invoice: '(n)', warranty: '(n)', vacancy: '(n)', discrepancy: '(n)',
+      subsidiary: '(n)', headquarters: '(n)', agenda: '(n)', memorandum: '(n)',
+      brochure: '(n)', pamphlet: '(n)', leaflet: '(n)', catalog: '(n)', inventory: '(n)',
+      merchandise: '(n)', apparel: '(n)', defect: '(n)', defective: '(adj)',
+      malfunction: '(n/v)', outage: '(n)', disruption: '(n)', congestion: '(n)',
+      pedestrian: '(n)', commuter: '(n)', passenger: '(n)', departure: '(n)',
+      tariff: '(n)', freight: '(n)', cargo: '(n)', shipment: '(n)', courier: '(n)',
+      recipient: '(n)', warehouse: '(n)', franchise: '(n)', merger: '(n)',
+      acquisition: '(n)', bankruptcy: '(n)', revenue: '(n)', turnover: '(n)',
+      dividend: '(n)', deficit: '(n)', surplus: '(n)', budget: '(n)', expenditure: '(n)',
+      expense: '(n)', reimbursement: '(n)', remuneration: '(n)', compensation: '(n)',
+      compensate: '(v)', pension: '(n)', severance: '(n)', incentive: '(n)',
+      commission: '(n)', installment: '(n)', mortgage: '(n)', collateral: '(n)',
+      liability: '(n)', asset: '(n)', equity: '(n)', portfolio: '(n)', receipt: '(n)',
+      voucher: '(n)', coupon: '(n)', rebate: '(n)', refund: '(n/v)', clientele: '(n)',
+      colleague: '(n)', subordinate: '(n)', supervisor: '(n)', executive: '(n)',
+      committee: '(n)', delegation: '(n)', nominee: '(n)', candidate: '(n)',
+      applicant: '(n)', intern: '(n)', trainee: '(n)', internship: '(n)',
+      predecessor: '(n)', successor: '(n)', counterpart: '(n)', advocate: '(n/v)',
+      proponent: '(n)', opponent: '(n)', verdict: '(n)', lawsuit: '(n)',
+      legislation: '(n)', regulation: '(n)', statute: '(n)', clause: '(n)',
+      provision: '(n)', stipulate: '(v)', breach: '(n/v)', infringement: '(n)',
+      violation: '(n)', penalty: '(n)', sanction: '(n)', embargo: '(n)',
+      consensus: '(n)', compromise: '(n/v)', deadlock: '(n)', breakthrough: '(n)',
+      milestone: '(n)', benchmark: '(n)', criterion: '(n)', criteria: '(n)',
+      paradigm: '(n)', phenomenon: '(n)', dilemma: '(n)', predicament: '(n)',
+      catastrophe: '(n)', calamity: '(n)', famine: '(n)', drought: '(n)',
+      epidemic: '(n)', pandemic: '(n)', outbreak: '(n)', hygiene: '(n)',
+      sanitation: '(n)', nutrition: '(n)', obesity: '(n)', fatigue: '(n)',
+      symptom: '(n)', diagnosis: '(n)', remedy: '(n)', therapy: '(n)',
+      rehabilitation: '(n)', immunity: '(n)', vaccine: '(n)', antibiotic: '(n)',
+      sedentary: '(adj)', chronic: '(adj)', acute: '(adj)', infectious: '(adj)',
+      contagious: '(adj)', lethal: '(adj)', fatal: '(adj)', genetic: '(adj)',
+      cognitive: '(adj)', vocational: '(adj)', extracurricular: '(adj)',
+      ecosystem: '(n)', skytrain: '(n)', peacekeeping: '(n)', donate: '(v)',
+      fossil: '(n/adj)', bullying: '(n)', landfill: '(n)', automate: '(v)',
+      fond: '(adj)', afraid: '(adj)', wait: '(v)', bad: '(adj)', help: '(v/n)',
+      share: '(v/n)', succeed: '(v)', suffer: '(v)', believe: '(v)', belong: '(v)',
+      accustomed: '(adj)', insist: '(v)', consist: '(v)', specialize: '(v)',
+      congratulate: '(v)', apologize: '(v)', interfere: '(v)', result: '(n/v)',
+      deprived: '(adj)', accommodate: '(v)', qualified: '(adj)', procedure: '(n)',
+      renovation: '(n)', proposal: '(n)', complaint: '(n)', performance: '(n)',
+      facility: '(n)', deadline: '(n)', reservation: '(n)', specification: '(n)',
+      obligation: '(n)', discount: '(n/v)', productive: '(adj)', announcement: '(n)',
+      conference: '(n)', delivery: '(n)', evaluate: '(v)', appointment: '(n)',
+      salary: '(n)', customer: '(n)', repair: '(v/n)', attend: '(v)', baggage: '(n)',
+      cashier: '(n)', lobby: '(n)', manager: '(n)', message: '(n)', order: '(n/v)',
+      package: '(n)', ticket: '(n)', visitor: '(n)', assistance: '(n)',
+      promotion: '(n)', accountant: '(n)', contract: '(n)', department: '(n)',
+      equipment: '(n)', inspect: '(v)', policy: '(n)', purchase: '(v/n)',
+      distribute: '(v)', contribute: '(v)', banquet: '(n)', estimate: '(v/n)',
+      extension: '(n)', maintenance: '(n)', representative: '(n)',
+      subscription: '(n)', consolidate: '(v)', credential: '(n)', amendment: '(n)'
+    };
+
+    if (posDict[cleanW]) return posDict[cleanW];
+
+    // Suy luận hình thái từ (Morphological Suffix Inference) cho các biến thể từ loại (Word Class options)
+    if (/ly$/.test(cleanW) && !/(supply|apply|rely|comply|imply|reply|multiply|ally|bully|monopoly|anomaly|assembly|family|friendly|costly|likely|lively|lonely|lovely|timely|orderly|daily|weekly|monthly|yearly|elderly)$/i.test(cleanW)) {
+      return '(adv)';
+    }
+    if (/(tion|sion|ment|ness|ity|ance|ence|ship|hood|dom|ism|ist|ture|cy|logy|nomy|graphy|ette|ade|er|or|ee|ant)$/i.test(cleanW)) {
+      if (/(significant|abundant|reluctant|redundant|vacant|relevant|tolerant|compliant|dominant|ignorant|important|distant|constant|instant|pleasant|elegant|brilliant|vibrant|hesitant)$/i.test(cleanW)) {
+        return '(adj)';
+      }
+      return '(n)';
+    }
+    if (/(ize|ise|ify|ate|en)$/i.test(cleanW)) {
+      if (/(candidate|delegate|mandate|advocate|graduate|estimate|associate|subordinate|accurate|adequate|appropriate|delicate|desperate|elaborate|fortunate|immediate|legitimate|moderate|passionate|ultimate|considerate|corporate|separate|intricate|innate|wooden|golden|woolen|broken|spoken|written|chosen|frozen|hidden|forbidden)$/i.test(cleanW)) {
+        return '(adj)';
+      }
+      return '(v)';
+    }
+    if (/(ive|ous|ful|less|able|ible|ic|al|ent)$/i.test(cleanW)) {
+      if (/(manual|journal|capital|signal|rival|festival|hospital|animal|approval|proposal|arrival|survival|removal|renewal|withdrawal|refusal|disposal|dismissal|appraisal|trial|potential|individual|professional|chemical|material|terminal|topic|critic|characteristic|statistic|logic|ethic|panic|traffic|public|president|resident|student|client|patient|recipient|ingredient|component|opponent|proponent|continent|accident|incident)$/i.test(cleanW)) {
+        return '(n)';
+      }
+      return '(adj)';
+    }
+    if (/ing$/.test(cleanW)) return '(v-ing)';
+    if (/ed$/.test(cleanW)) return '(v-ed)';
+    if (q && q.vietnamese) {
+      const vn = String(q.vietnamese).toLowerCase();
+      if (/^(sự |việc |người |nhà |chế độ |hệ thống |khoản |tiền |bản |hợp đồng|lịch trình|hóa đơn|bằng cấp)/.test(vn)) return '(n)';
+      if (/^(một cách )/.test(vn)) return '(adv)';
+    }
+    return '(v)';
+  }
+
+  resolveQuestionImageUrl(q) {
+    if (!q || q.isAudioQuiz) return null;
+    if (q.image_url) return q.image_url;
+    if (typeof VOCAB_IMAGES === 'undefined') return null;
+    const targetKey = (q.target_word || '').trim().toLowerCase();
+    const baseKey = targetKey.replace(/\s+(to|for|with|on|in|of|from|at|by|into|about|upon)$/i, '');
+    return VOCAB_IMAGES[targetKey] || VOCAB_IMAGES[baseKey] || null;
+  }
+
+  // Tiền xử lý & nạp trước (Preload) tài nguyên hình ảnh + siêu dữ liệu của câu hỏi vào RAM
+  getOrPrecomputeQuestionMeta(q) {
+    if (!q) return null;
+    const cacheKey = q.id || `${q.target_word}_${q.mode}`;
+    if (this.preloadedQuestionCache && this.preloadedQuestionCache.has(cacheKey)) {
+      return this.preloadedQuestionCache.get(cacheKey);
+    }
+
+    const imgUrl = this.resolveQuestionImageUrl(q);
+    if (imgUrl && this.preloadedImageCache && !this.preloadedImageCache.has(imgUrl)) {
+      try {
+        if (typeof Image !== 'undefined') {
+          const preImg = new Image();
+          preImg.decoding = 'async';
+          preImg.src = imgUrl;
+          if (typeof preImg.decode === 'function') {
+            preImg.decode().catch(() => {});
+          }
+          this.preloadedImageCache.set(imgUrl, preImg);
+        }
+      } catch (e) {}
+    }
+
+    const ansWord = (q.mode === 'word_class' && q.options && q.options[q.correct])
+      ? q.options[q.correct]
+      : (q.target_word || (q.options && q.options[q.correct]) || '');
+    const mainPos = this.getWordPOS(ansWord, q);
+    const optionPosList = Array.isArray(q.options)
+      ? q.options.map(opt => this.getWordPOS(opt, q))
+      : [];
+    const highlightedSentence = q.sentence
+      ? q.sentence.replace(/_{2,}/g, '<span class="blank-slot">____</span>')
+      : '';
+
+    const meta = {
+      imgUrl,
+      hasImage: Boolean(imgUrl),
+      mainPos,
+      optionPosList,
+      highlightedSentence
+    };
+
+    if (this.preloadedQuestionCache) {
+      this.preloadedQuestionCache.set(cacheKey, meta);
+    }
+    return meta;
+  }
+
+  // Nạp trước (Lookahead Preloader) các từ vựng tiếp theo trong hàng đợi để chuyển câu 0ms không trễ
+  preloadUpcomingQuestions(startIndex = 0, lookaheadCount = 4) {
+    if (!Array.isArray(this.questions) || this.questions.length === 0) return;
+
+    const endImmediate = Math.min(this.questions.length, startIndex + lookaheadCount);
+    for (let i = Math.max(0, startIndex); i < endImmediate; i++) {
+      this.getOrPrecomputeQuestionMeta(this.questions[i]);
+    }
+
+    // Làm nóng bộ phát âm Web Speech API
+    if (typeof speechEngine !== 'undefined' && speechEngine.synth && typeof speechEngine.synth.getVoices === 'function') {
+      try { speechEngine.synth.getVoices(); } catch (e) {}
+    }
+
+    // Nạp nền toàn bộ các câu còn lại trong vòng chơi khi luồng chính rảnh
+    if (endImmediate < this.questions.length) {
+      const scheduleIdle = (typeof window !== 'undefined' && window.requestIdleCallback)
+        ? window.requestIdleCallback
+        : (fn => setTimeout(fn, 24));
+      scheduleIdle(() => {
+        if (!Array.isArray(this.questions)) return;
+        for (let j = endImmediate; j < this.questions.length; j++) {
+          this.getOrPrecomputeQuestionMeta(this.questions[j]);
+        }
+      });
+    }
   }
 
   // Hệ thống phản hồi xúc giác vật lý (Tactile Haptic Feedback) đa nền tảng (Android Vibrate API + iOS 17.4+/18+ Taptic Switch)
@@ -280,10 +526,26 @@ class GameEngine {
     try {
       localStorage.setItem('ielts_auto_next', String(this.autoNextEnabled));
     } catch (e) {}
+    this.triggerHaptic('light');
     this.updateAutoNextUI();
     if (!this.autoNextEnabled && this.autoAdvanceTimer) {
       clearTimeout(this.autoAdvanceTimer);
       this.autoAdvanceTimer = null;
+    } else if (
+      this.autoNextEnabled &&
+      this.feedbackDrawer &&
+      this.feedbackDrawer.classList &&
+      this.feedbackDrawer.classList.contains('active') &&
+      this.feedbackDrawer.classList.contains('correct-state') &&
+      this.hearts > 0 &&
+      this.currentIndex < this.questions.length - 1
+    ) {
+      clearTimeout(this.autoAdvanceTimer);
+      this.autoAdvanceTimer = setTimeout(() => {
+        if (this.feedbackDrawer && this.feedbackDrawer.classList.contains('active')) {
+          this.nextQuestion();
+        }
+      }, 900);
     }
   }
 
@@ -292,7 +554,7 @@ class GameEngine {
     if (this.btnAutoNextToggle.classList) {
       this.btnAutoNextToggle.classList.toggle('active', this.autoNextEnabled);
     }
-    this.btnAutoNextToggle.innerHTML = `<span>⚡ Tự qua: ${this.autoNextEnabled ? 'BẬT' : 'TẮT'}</span>`;
+    this.btnAutoNextToggle.innerHTML = `<span>Auto Next</span>`;
   }
 
   loadUsedQuestionIds() {
@@ -567,10 +829,19 @@ class GameEngine {
     this.dailyGoalSelector = document.getElementById('daily-goal-selector');
     this.currentMasteryTab = 'all';
 
-    // AI Exam Importer Modal & Haptic Switch
+    // AI Exam Importer Modal, Camera Capture & Haptic Switch
     this.btnExamImport = document.getElementById('btn-exam-import');
     this.examImportModalOverlay = document.getElementById('exam-import-modal-overlay');
     this.btnExamImportClose = document.getElementById('btn-exam-import-close');
+    this.btnOpenExamCamera = document.getElementById('btn-open-exam-camera');
+    this.inputExamCamera = document.getElementById('input-exam-camera');
+    this.examCameraPanel = document.getElementById('exam-camera-panel');
+    this.examCameraVideo = document.getElementById('exam-camera-video');
+    this.btnSwitchCamera = document.getElementById('btn-switch-camera');
+    this.btnSnapExamPhoto = document.getElementById('btn-snap-exam-photo');
+    this.btnCloseCamera = document.getElementById('btn-close-camera');
+    this.cameraStream = null;
+    this.cameraFacingMode = 'environment';
     this.examDropzone = document.getElementById('exam-dropzone');
     this.inputExamFile = document.getElementById('input-exam-file');
     this.examSelectedFilePill = document.getElementById('exam-selected-file-pill');
@@ -1165,6 +1436,7 @@ class GameEngine {
 
     const pool = this.getFilteredBank();
     this.questions = this.generateAdaptiveQueue(pool);
+    this.preloadUpcomingQuestions(0, 5);
 
     this.currentIndex = 0;
     this.score = 0;
@@ -1205,6 +1477,9 @@ class GameEngine {
     }
 
     const q = this.questions[index];
+    const qMeta = this.getOrPrecomputeQuestionMeta(q);
+    this.preloadUpcomingQuestions(index + 1, 4);
+
     if (!this.sessionVocabs.some(item => item.id === q.id)) {
       this.sessionVocabs.push(q);
     }
@@ -1269,19 +1544,33 @@ class GameEngine {
       this.modeBadge.style.color = `var(--text-secondary)`;
     }
 
-    // Hiển thị hình ảnh minh họa chì (Pencil Art từ repo Danh_English_Tutor)
+    // Hiển thị hình ảnh minh họa chì (đã được Preload & Decode sẵn từ bộ nhớ đệm)
     let hasVisibleVocabImage = false;
     if (this.vocabImageContainer && this.vocabImg) {
-      const targetKey = (q.target_word || '').trim().toLowerCase();
-      const imgUrl = (!q.isAudioQuiz && typeof VOCAB_IMAGES !== 'undefined') ? VOCAB_IMAGES[targetKey] : null;
+      const imgUrl = (qMeta && qMeta.imgUrl) || this.resolveQuestionImageUrl(q);
       if (imgUrl) {
-        this.vocabImg.src = imgUrl;
+        if (this.vocabImg.src !== imgUrl) {
+          this.vocabImg.src = imgUrl;
+        }
         this.vocabImg.alt = q.target_word || 'Minh họa từ vựng';
         this.vocabImageContainer.style.display = 'flex';
         hasVisibleVocabImage = true;
       } else {
         this.vocabImageContainer.style.display = 'none';
         this.vocabImg.src = '';
+      }
+    }
+
+    if (this.questionCard && this.questionCard.classList) {
+      if (hasVisibleVocabImage) {
+        this.questionCard.classList.add('has-image');
+      } else {
+        this.questionCard.classList.remove('has-image');
+      }
+      if (!q.isAudioQuiz && q.mode === 'letter_fill') {
+        this.questionCard.classList.add('is-letter-fill');
+      } else {
+        this.questionCard.classList.remove('is-letter-fill');
       }
     }
 
@@ -1317,7 +1606,7 @@ class GameEngine {
     } else if (q.sentence) {
       this.promptText.textContent = q.prompt || 'Chọn đáp án học thuật chính xác:';
       this.letterBoxContainer.style.display = 'none';
-      const highlightedSentence = q.sentence.replace(/_{2,}/g, '<span class="blank-slot">____</span>');
+      const highlightedSentence = (qMeta && qMeta.highlightedSentence) || q.sentence.replace(/_{2,}/g, '<span class="blank-slot">____</span>');
       this.questionMainText.innerHTML = highlightedSentence;
       this.renderAnswerButtons(q);
     } else {
@@ -1368,11 +1657,22 @@ class GameEngine {
       : String(q.sentence || q.prompt || '');
     const len = rawText.length;
 
-    if (len > 115 || (hasImage && len > 75)) {
+    if (hasImage) {
+      if (len > 95) {
+        this.questionMainText.classList.add('text-scale-xs');
+      } else if (len > 55) {
+        this.questionMainText.classList.add('text-scale-sm');
+      } else {
+        this.questionMainText.classList.add('text-scale-md');
+      }
+      return;
+    }
+
+    if (len > 125) {
       this.questionMainText.classList.add('text-scale-xs');
-    } else if (len > 80 || hasImage || q.mode === 'letter_fill') {
+    } else if (len > 85) {
       this.questionMainText.classList.add('text-scale-sm');
-    } else if (len > 36) {
+    } else if (len > 42) {
       this.questionMainText.classList.add('text-scale-md');
     } else {
       this.questionMainText.classList.add('text-scale-xl');
@@ -1639,16 +1939,33 @@ class GameEngine {
   renderAnswerButtons(q) {
     this.answersContainer.innerHTML = '';
     const letters = ['A', 'B', 'C', 'D'];
+    const qMeta = this.getOrPrecomputeQuestionMeta(q);
 
     q.options.forEach((optText, idx) => {
       const btn = document.createElement('button');
       btn.className = 'btn-tactile';
       const labelClass = String(optText || '').length > 26 ? 'btn-label opt-len-long' : 'btn-label';
-      btn.innerHTML = `<span class="btn-badge">${letters[idx]}</span> <span class="${labelClass}">${optText}</span>`;
+      const optPos = (qMeta && qMeta.optionPosList && qMeta.optionPosList[idx]) || this.getWordPOS(optText, q);
+      const posBadgeHtml = optPos
+        ? ` <span class="opt-pos-tag${q.mode === 'word_class' ? ' pos-hidden-until-answer' : ''}">${optPos}</span>`
+        : '';
+      btn.innerHTML = `<span class="btn-badge">${letters[idx]}</span> <span class="${labelClass}">${optText}${posBadgeHtml}</span>`;
       this.attachTactileHaptics(btn, 'light');
       btn.addEventListener('click', () => this.handleAnswerSelect(idx, btn));
       this.answersContainer.appendChild(btn);
     });
+  }
+
+  revealHiddenOptionPosTags() {
+    if (!this.answersContainer || !this.answersContainer.querySelectorAll) return;
+    const hiddenTags = this.answersContainer.querySelectorAll('.pos-hidden-until-answer');
+    if (hiddenTags && hiddenTags.forEach) {
+      hiddenTags.forEach(el => {
+        if (el && el.classList && el.classList.remove) {
+          el.classList.remove('pos-hidden-until-answer');
+        }
+      });
+    }
   }
 
   // Điền & Highlight trực tiếp từ đúng vào ô trống ____ trong câu ngữ cảnh
@@ -1765,6 +2082,7 @@ class GameEngine {
       this.handleWrongAnswer();
     }
 
+    this.revealHiddenOptionPosTags();
     this.roundResults.push(isCorrect);
     this.recordDailyAnswer();
     this.renderSegmentedRoundBar();
@@ -1805,6 +2123,7 @@ class GameEngine {
       }
     }
 
+    this.revealHiddenOptionPosTags();
     const retentionRate = this.updateWordRetention(q.id, false);
     this.updateMemoryProfile(q, false, this.maxTimeSeconds);
     this.handleWrongAnswer(true);
@@ -1908,16 +2227,34 @@ class GameEngine {
     };
     const insertIdx = Math.min(this.questions.length, this.currentIndex + 3);
     this.questions.splice(insertIdx, 0, recallVariant);
+    this.getOrPrecomputeQuestionMeta(recallVariant);
+  }
+
+  getShortBandTag(q) {
+    if (!q) return 'TOEIC 400-450';
+    const gl = String(q.grade_label || '').trim();
+    if (/^TOEIC/i.test(gl)) {
+      return gl;
+    }
+    const bandStr = String(q.band || '').trim();
+    if (/^TOEIC/i.test(bandStr)) {
+      return bandStr;
+    }
+    if (bandStr) {
+      return `IELTS ${bandStr}`;
+    }
+    return gl || 'TOEIC 400-450';
   }
 
   getConfusableNote(q) {
     if (!q) return '';
     const key = String(q.target_word || '').trim().toLowerCase();
     if (CONFUSABLE_WORDS_DB[key]) {
-      return CONFUSABLE_WORDS_DB[key];
+      return CONFUSABLE_WORDS_DB[key].replace(/Bẫy phòng thi/gi, 'Bẫy');
     }
     if (q.common_mistake) {
-      return `⚠️ Bẫy phòng thi: ${q.common_mistake}`;
+      const cleanedMistake = String(q.common_mistake).replace(/^Bẫy phòng thi\s*:\s*/i, '').trim();
+      return `⚠️ Bẫy: ${cleanedMistake}`;
     }
     return '';
   }
@@ -1933,11 +2270,14 @@ class GameEngine {
       this.feedbackTitle.innerHTML = `<span style="color:var(--color-danger)">✕ CHƯA ĐÚNG!</span> <span style="font-size:0.75rem; background:rgba(239,68,68,0.15); color:var(--color-danger); padding:3px 10px; border-radius:8px; font-weight:800;">🧠 Độ nhớ: ${retentionRate}%</span>`;
     }
 
-    const displayWord = q.target_word || (q.options && q.options[q.correct]) || '';
+    const displayWord = (q.mode === 'word_class' && q.options && q.options[q.correct])
+      ? q.options[q.correct]
+      : (q.target_word || (q.options && q.options[q.correct]) || '');
+    const posTag = this.getWordPOS(displayWord, q);
 
     this.feedbackVietnamese.innerHTML = `
       <div class="feedback-word-info">
-        <span class="feedback-vn-text">${displayWord ? `<strong style="color:var(--accent-primary);margin-right:4px;">${displayWord}:</strong>` : ''}${q.vietnamese}</span>
+        <span class="feedback-vn-text">${displayWord ? `<strong style="color:var(--accent-primary);margin-right:4px;">${displayWord}</strong>${posTag ? `<span class="pos-tag-badge">${posTag}</span>` : ''}<strong style="color:var(--accent-primary);margin-right:4px;">:</strong>` : ''}${q.vietnamese}</span>
         ${q.phonetic ? `<span class="feedback-phonetic-badge">${q.phonetic}</span>` : ''}
       </div>
       <button class="btn-audio-replay" id="btn-audio-replay" title="Nghe lại phát âm chuẩn" aria-label="Nghe lại phát âm chuẩn">
@@ -1961,7 +2301,7 @@ class GameEngine {
     }
 
     if (this.feedbackExplanation) {
-      this.feedbackExplanation.textContent = q.explanation || '';
+      this.feedbackExplanation.textContent = this.getShortBandTag(q);
     }
 
     if (this.feedbackConfusableBox) {
@@ -2193,12 +2533,13 @@ ${emojiBlocks}
       card.className = 'vault-item-card';
       const ret = this.getWordRetention(v.id);
       const word = v.target_word || v.masked || v.options[v.correct];
+      const posTag = this.getWordPOS(word, v);
       const gradeText = v.grade_label || (v.grade ? `Lớp ${v.grade}` : 'IELTS');
 
       card.innerHTML = `
         <div class="vault-item-top">
           <span class="vault-word-title">
-            ${word} 
+            ${word} ${posTag ? `<span class="pos-tag-badge">${posTag}</span>` : ''}
             <span style="font-size:0.8rem; color:var(--text-muted);">${v.phonetic || ''}</span>
             <button class="btn-vault-speak" title="Phát âm từ vựng">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
@@ -2351,6 +2692,36 @@ ${emojiBlocks}
         if (e.target === this.examImportModalOverlay) this.closeExamImportModal();
       });
     }
+    if (this.btnOpenExamCamera) {
+      this.btnOpenExamCamera.addEventListener('click', () => {
+        this.triggerHaptic('medium');
+        this.openExamCamera();
+      });
+    }
+    if (this.inputExamCamera) {
+      this.inputExamCamera.addEventListener('change', (e) => {
+        const file = e.target && e.target.files ? e.target.files[0] : null;
+        if (file) this.handleExamFileSelected(file);
+      });
+    }
+    if (this.btnSwitchCamera) {
+      this.btnSwitchCamera.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.switchCameraFacingMode();
+      });
+    }
+    if (this.btnSnapExamPhoto) {
+      this.btnSnapExamPhoto.addEventListener('click', () => {
+        this.triggerHaptic('success');
+        this.snapExamPhoto();
+      });
+    }
+    if (this.btnCloseCamera) {
+      this.btnCloseCamera.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.stopExamCamera();
+      });
+    }
     if (this.examDropzone && this.inputExamFile) {
       this.examDropzone.addEventListener('click', (e) => {
         if (e.target === this.btnClearExamFile) return;
@@ -2463,8 +2834,112 @@ Answer: A`;
   }
 
   closeExamImportModal() {
+    this.stopExamCamera();
     if (this.examImportModalOverlay) {
       this.examImportModalOverlay.classList.remove('active');
+    }
+  }
+
+  async openExamCamera() {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+      try {
+        this.stopExamCamera();
+        let stream = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: this.cameraFacingMode || 'environment' },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
+            audio: false
+          });
+        } catch (firstErr) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+        this.cameraStream = stream;
+        if (this.examCameraVideo) {
+          this.examCameraVideo.srcObject = stream;
+          if (typeof this.examCameraVideo.play === 'function') {
+            this.examCameraVideo.play().catch(() => {});
+          }
+        }
+        if (this.examCameraPanel) {
+          this.examCameraPanel.style.display = 'flex';
+        }
+        if (this.examImportStatus) {
+          this.examImportStatus.style.display = 'block';
+          this.examImportStatus.textContent = '📷 Hướng camera vào trang đề thi và bấm "📸 Chụp Ảnh Đề"';
+        }
+        return;
+      } catch (camErr) {
+        // Fallback to native file input with capture="environment" if permission denied or unsupported
+      }
+    }
+    if (this.inputExamCamera && typeof this.inputExamCamera.click === 'function') {
+      this.inputExamCamera.click();
+    }
+  }
+
+  async switchCameraFacingMode() {
+    this.cameraFacingMode = this.cameraFacingMode === 'environment' ? 'user' : 'environment';
+    await this.openExamCamera();
+  }
+
+  stopExamCamera() {
+    if (this.cameraStream && typeof this.cameraStream.getTracks === 'function') {
+      this.cameraStream.getTracks().forEach(track => {
+        if (track && typeof track.stop === 'function') track.stop();
+      });
+    }
+    this.cameraStream = null;
+    if (this.examCameraVideo) {
+      this.examCameraVideo.srcObject = null;
+    }
+    if (this.examCameraPanel) {
+      this.examCameraPanel.style.display = 'none';
+    }
+  }
+
+  snapExamPhoto() {
+    if (!this.examCameraVideo) return;
+    const video = this.examCameraVideo;
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, width, height);
+    }
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const commaIdx = dataUrl.indexOf(',');
+    const base64Str = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+    const byteSize = Math.round((base64Str.length * 3) / 4);
+    const fileName = `chup-de-thi-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.jpg`;
+
+    // Lưu trực tiếp ảnh vừa chụp vào selectedExamFile (hỗ trợ cả base64 trực tiếp)
+    this.selectedExamFile = {
+      name: fileName,
+      type: 'image/jpeg',
+      size: byteSize,
+      precomputedBase64: base64Str
+    };
+
+    this.stopExamCamera();
+    soundEngine.playCorrect(1);
+
+    if (this.examSelectedFilePill) {
+      this.examSelectedFilePill.style.display = 'inline-flex';
+    }
+    if (this.examSelectedFileName) {
+      const sizeKB = Math.max(1, Math.round(byteSize / 1024));
+      this.examSelectedFileName.textContent = `📸 ${fileName} (${sizeKB} KB)`;
+    }
+    if (this.examImportStatus) {
+      this.examImportStatus.style.display = 'block';
+      this.examImportStatus.textContent = '📸 Đã chụp ảnh đề thi! Bấm nút "✨ Chuyển Thành Câu Hỏi..." bên dưới ngay.';
     }
   }
 
@@ -2493,6 +2968,9 @@ Answer: A`;
   }
 
   readFileAsBase64(file) {
+    if (file && file.precomputedBase64) {
+      return Promise.resolve(file.precomputedBase64);
+    }
     return new Promise((resolve, reject) => {
       if (typeof FileReader === 'undefined') {
         reject(new Error('Trình duyệt không hỗ trợ FileReader'));
@@ -2619,9 +3097,10 @@ Answer: A`;
       const item = document.createElement('div');
       item.className = 'exam-preview-item';
       const ansWord = (q.options && q.options[q.correct]) || q.target_word || '';
+      const posTag = this.getWordPOS(ansWord, q);
       item.innerHTML = `
         <div class="ep-top">
-          <span class="ep-word">#${idx + 1}. ${ansWord} <span style="font-weight:600;color:var(--text-secondary);">(${q.vietnamese || ''})</span></span>
+          <span class="ep-word">#${idx + 1}. ${ansWord} ${posTag ? `<span class="pos-tag-badge">${posTag}</span> ` : ''}<span style="font-weight:600;color:var(--text-secondary);">(${q.vietnamese || ''})</span></span>
           <span class="ep-mode-badge">${modeTagMap[q.mode] || 'Trắc nghiệm'}</span>
         </div>
         <div class="ep-sentence">${q.sentence || q.prompt || ''}</div>
@@ -2802,10 +3281,12 @@ Answer: A`;
     list.slice(0, 60).forEach(item => {
       const row = document.createElement('div');
       row.className = 'mastery-word-card';
+      const posTag = this.getWordPOS(item.word, item);
       row.innerHTML = `
         <div class="mw-left">
           <div class="mw-title-line">
             <span class="mw-word">${item.word}</span>
+            ${posTag ? `<span class="pos-tag-badge">${posTag}</span>` : ''}
             ${item.phonetic ? `<span class="mw-phonetic">${item.phonetic}</span>` : ''}
             <span class="mw-lv-pill">${lvBadges[item.masteryLevel] || 'Lv.1 🌱'}</span>
           </div>

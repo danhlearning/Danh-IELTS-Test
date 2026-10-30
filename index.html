@@ -164,7 +164,7 @@
 
             <!-- Vùng hình ảnh minh họa từ vựng bút chì (Pencil Art từ Danh_English_Tutor) -->
             <div class="vocab-image-container" id="vocab-image" style="display: none;">
-              <img id="vocab-img" src="" alt="Minh họa từ vựng" loading="lazy">
+              <img id="vocab-img" src="" alt="Minh họa từ vựng" decoding="async">
             </div>
 
             <!-- Ô chữ cái nổi 3D Liquid Crystal (cho chế độ Điền chữ cái) -->
@@ -233,15 +233,15 @@
           <div class="drawer-handle" title="Vuốt xuống hoặc sang trái để qua câu tiếp theo"></div>
           <div class="feedback-header-row">
             <div class="feedback-title" id="feedback-title">✓ CHÍNH XÁC!</div>
-            <button type="button" class="btn-auto-next-pill active" id="btn-auto-next-toggle" title="Bật/Tắt tự động chuyển câu khi trả lời Đúng">
-              <span>⚡ Tự qua: BẬT</span>
+            <button type="button" class="btn-auto-next-pill active" id="btn-auto-next-toggle" title="Bật/Tắt Auto Next cho toàn bộ game">
+              <span>Auto Next</span>
             </button>
           </div>
           <div class="feedback-vietnamese" id="feedback-vietnamese">tàn phá, hủy hoại</div>
           
           <!-- Giải thích ngắn gọn, súc tích, dễ hiểu -->
           <p class="feedback-explanation" id="feedback-explanation">
-            'wreak havoc' là academic collocation chuẩn band 7+.
+            TOEIC 400-450
           </p>
 
           <!-- Hộp Phân Biệt Cặp Từ Dễ Nhầm & Cảnh Báo Bẫy Phòng Thi -->
@@ -598,7 +598,27 @@
               <h3>📄 Chuyển Đề Thi AI (Ảnh / PDF / Word)</h3>
               <button class="modal-close-icon-btn" id="btn-exam-import-close">✕</button>
             </div>
-            <p class="grade-modal-subtitle">Tải lên đề thi chụp ảnh, PDF hoặc Word (.docx) để AI tự động tạo câu hỏi Trắc nghiệm & Điền từ</p>
+
+            <!-- Hàng nút thao tác nhanh: Mở Camera Chụp Đề & Chọn File -->
+            <div class="exam-capture-actions-row">
+              <button type="button" class="btn-camera-capture" id="btn-open-exam-camera">
+                <span>📷 Mở Camera Chụp Đề</span>
+              </button>
+              <input type="file" id="input-exam-camera" accept="image/*" capture="environment" style="display: none;">
+            </div>
+
+            <!-- Khung Camera Trực Tiếp (Live Camera Viewfinder) -->
+            <div class="exam-camera-panel" id="exam-camera-panel" style="display: none;">
+              <div class="camera-video-wrapper">
+                <video id="exam-camera-video" autoplay playsinline muted></video>
+                <div class="camera-scan-frame"></div>
+              </div>
+              <div class="camera-controls-bar">
+                <button type="button" class="btn-cam-secondary" id="btn-switch-camera" title="Đổi Camera Trước / Sau">🔄 Đổi Cam</button>
+                <button type="button" class="btn-cam-snap" id="btn-snap-exam-photo">📸 Chụp Ảnh Đề</button>
+                <button type="button" class="btn-cam-secondary" id="btn-close-camera">✕ Đóng</button>
+              </div>
+            </div>
 
             <!-- Khu vực chọn hoặc kéo thả File Ảnh / PDF / Word -->
             <div class="exam-dropzone" id="exam-dropzone">
@@ -609,40 +629,18 @@
                 <span class="dz-badge">📘 Word (.docx)</span>
               </div>
               <div class="dropzone-main-title" id="exam-dropzone-title">Chạm để chọn File đề thi hoặc kéo thả vào đây</div>
-              <div class="dropzone-sub-hint" id="exam-dropzone-sub">Hỗ trợ ảnh chụp trang đề thi, file PDF, Word (.docx) hoặc Text (.txt)</div>
               <div class="exam-selected-file-pill" id="exam-selected-file-pill" style="display: none;">
                 <span id="exam-selected-file-name">de-thi-toeic.pdf</span>
                 <button type="button" id="btn-clear-exam-file" class="btn-clear-file-mini" title="Bỏ chọn file">✕</button>
               </div>
             </div>
 
-            <!-- Ô dán văn bản đề thi trực tiếp hoặc dùng Đề Mẫu -->
+            <!-- Ô dán văn bản đề thi trực tiếp hoặc dùng Đề Mẫu (Tinh gọn) -->
             <div class="exam-text-section">
-              <div class="exam-text-header">
-                <span>✍️ Hoặc dán nội dung câu hỏi / bài đọc / danh sách từ:</span>
-                <button type="button" class="btn-sample-exam" id="btn-fill-sample-exam">📋 Dán Đề Mẫu</button>
+              <div class="exam-text-header exam-text-header-compact">
+                <button type="button" class="btn-sample-exam" id="btn-fill-sample-exam">📋 Dán Đề Mẫu Thử Ngay</button>
               </div>
-              <textarea id="exam-raw-text-input" class="exam-raw-textarea" rows="3" placeholder="Ví dụ:&#10;1. All employees must comply ____ the new safety regulations.&#10;A. with   B. to   C. for   D. on&#10;Hoặc dán đoạn văn Reading / bảng từ vựng tiếng Anh..."></textarea>
-            </div>
-
-            <!-- Tùy chọn Chế độ câu hỏi & Số lượng câu -->
-            <div class="exam-config-row">
-              <div class="exam-config-group">
-                <span class="cfg-label">Dạng câu hỏi tạo ra:</span>
-                <div class="cfg-pills" id="exam-mode-selector">
-                  <button type="button" class="cfg-pill-btn active" data-emode="mixed">⚡ Trắc nghiệm + Điền từ</button>
-                  <button type="button" class="cfg-pill-btn" data-emode="mcq_only">📝 Chỉ Trắc nghiệm</button>
-                  <button type="button" class="cfg-pill-btn" data-emode="fill_only">🔤 Điền từ / Chữ cái</button>
-                </div>
-              </div>
-              <div class="exam-config-group">
-                <span class="cfg-label">Số câu:</span>
-                <div class="cfg-pills" id="exam-count-selector">
-                  <button type="button" class="cfg-count-btn active" data-ecount="10">10 câu</button>
-                  <button type="button" class="cfg-count-btn" data-ecount="15">15 câu</button>
-                  <button type="button" class="cfg-count-btn" data-ecount="20">20 câu</button>
-                </div>
-              </div>
+              <textarea id="exam-raw-text-input" class="exam-raw-textarea" rows="2" placeholder="Hoặc dán nhanh câu hỏi / đoạn văn đề thi vào đây..."></textarea>
             </div>
 
             <!-- Nút bấm Chuyển Đổi Đề Thi Bằng AI -->
