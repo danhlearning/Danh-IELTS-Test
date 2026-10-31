@@ -78,6 +78,7 @@ class GameEngine {
     this.dailyTracker = this.loadDailyTracker();
     this.autoNextEnabled = this.loadAutoNextSetting();
     this.customExamBank = this.loadCustomExamBank();
+    this.savedExamPhotos = this.loadSavedExamPhotos();
     this.selectedExamFile = null;
     this.examQuestionTypeMode = 'mixed';
     this.examQuestionCount = 10;
@@ -93,6 +94,7 @@ class GameEngine {
     this.updateGradeFilterUI();
     this.updateDailyTrackerUI();
     this.updateAutoNextUI();
+    this.renderSavedExamPhotosGallery();
     this.renderCustomExamPreview();
   }
 
@@ -393,6 +395,39 @@ class GameEngine {
     try {
       localStorage.setItem('ielts_custom_exam_bank', JSON.stringify(this.customExamBank || []));
     } catch (e) {}
+  }
+
+  loadSavedExamPhotos() {
+    try {
+      const saved = localStorage.getItem('ielts_saved_exam_photos_v1');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  saveSavedExamPhotos() {
+    if (!Array.isArray(this.savedExamPhotos)) {
+      this.savedExamPhotos = [];
+    }
+    // Giữ tối đa 12 ảnh gần nhất và tự động giảm bớt nếu vượt bộ nhớ localStorage
+    while (this.savedExamPhotos.length > 12) {
+      this.savedExamPhotos.shift();
+    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        localStorage.setItem('ielts_saved_exam_photos_v1', JSON.stringify(this.savedExamPhotos));
+        return;
+      } catch (quotaErr) {
+        if (this.savedExamPhotos.length > 1) {
+          this.savedExamPhotos.shift();
+        } else {
+          break;
+        }
+      }
+    }
   }
 
   getTodayDateKey() {
@@ -861,6 +896,11 @@ class GameEngine {
     this.examSelectedFilePill = document.getElementById('exam-selected-file-pill');
     this.examSelectedFileName = document.getElementById('exam-selected-file-name');
     this.btnClearExamFile = document.getElementById('btn-clear-exam-file');
+    this.examPhotoGallerySection = document.getElementById('exam-photo-gallery-section');
+    this.examPhotoCountBadge = document.getElementById('exam-photo-count-badge');
+    this.examPhotoGalleryList = document.getElementById('exam-photo-gallery-list');
+    this.btnAddMorePhoto = document.getElementById('btn-add-more-photo');
+    this.btnClearSavedPhotos = document.getElementById('btn-clear-saved-photos');
     this.btnFillSampleExam = document.getElementById('btn-fill-sample-exam');
     this.examRawTextInput = document.getElementById('exam-raw-text-input');
     this.examModeSelector = document.getElementById('exam-mode-selector');
@@ -874,7 +914,12 @@ class GameEngine {
     this.customExamCountBadge = document.getElementById('custom-exam-count-badge');
     this.iosHapticTrigger = document.getElementById('ios-haptic-trigger');
 
-    // Header actions
+    // Header actions & Settings Menu
+    this.settingsMenuWrapper = document.getElementById('settings-menu-wrapper');
+    this.btnSettingsToggle = document.getElementById('btn-settings-toggle');
+    this.settingsDropdownMenu = document.getElementById('settings-dropdown-menu');
+    this.settingsSoundBadge = document.getElementById('settings-sound-badge');
+    this.settingsThemeBadge = document.getElementById('settings-theme-badge');
     this.btnThemeToggle = document.getElementById('btn-theme-toggle');
     this.themeIconSvg = document.getElementById('theme-icon-svg');
     this.btnSoundToggle = document.getElementById('btn-sound-toggle');
@@ -883,8 +928,32 @@ class GameEngine {
   }
 
   bindEvents() {
-    this.btnThemeToggle.addEventListener('click', () => this.toggleTheme());
-    this.btnSoundToggle.addEventListener('click', () => this.toggleSound());
+    if (this.btnSettingsToggle) {
+      this.btnSettingsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.triggerHaptic('light');
+        this.toggleSettingsMenu();
+      });
+    }
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('click', (e) => {
+        if (this.settingsMenuWrapper && this.settingsDropdownMenu && this.settingsDropdownMenu.classList && this.settingsDropdownMenu.classList.contains('open')) {
+          if (typeof this.settingsMenuWrapper.contains === 'function' && !this.settingsMenuWrapper.contains(e.target)) {
+            this.closeSettingsMenu();
+          }
+        }
+      });
+    }
+    this.btnThemeToggle.addEventListener('click', (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      this.triggerHaptic('light');
+      this.toggleTheme();
+    });
+    this.btnSoundToggle.addEventListener('click', (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      this.triggerHaptic('light');
+      this.toggleSound();
+    });
     if (this.btnViewToggle) {
       this.btnViewToggle.addEventListener('click', () => this.toggleViewMode());
     }
@@ -892,7 +961,10 @@ class GameEngine {
       this.btnAudioQuizMode.addEventListener('click', () => this.toggleAudioQuizMode());
     }
     if (this.btnMasteryStats) {
-      this.btnMasteryStats.addEventListener('click', () => this.openMasteryModal());
+      this.btnMasteryStats.addEventListener('click', () => {
+        this.closeSettingsMenu();
+        this.openMasteryModal();
+      });
     }
     if (this.dailyGoalPill) {
       this.dailyGoalPill.addEventListener('click', () => this.openMasteryModal());
@@ -1186,7 +1258,38 @@ class GameEngine {
     this.updateSoundIcon(soundEngine.isMuted);
   }
 
+  toggleSettingsMenu() {
+    if (!this.settingsDropdownMenu || !this.settingsDropdownMenu.classList) return;
+    const isOpen = this.settingsDropdownMenu.classList.toggle('open');
+    if (this.btnSettingsToggle && this.btnSettingsToggle.classList) {
+      this.btnSettingsToggle.classList.toggle('active-gear', isOpen);
+      if (typeof this.btnSettingsToggle.setAttribute === 'function') {
+        this.btnSettingsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      }
+    }
+    if (typeof this.settingsDropdownMenu.setAttribute === 'function') {
+      this.settingsDropdownMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    }
+  }
+
+  closeSettingsMenu() {
+    if (!this.settingsDropdownMenu || !this.settingsDropdownMenu.classList) return;
+    this.settingsDropdownMenu.classList.remove('open');
+    if (typeof this.settingsDropdownMenu.setAttribute === 'function') {
+      this.settingsDropdownMenu.setAttribute('aria-hidden', 'true');
+    }
+    if (this.btnSettingsToggle && this.btnSettingsToggle.classList) {
+      this.btnSettingsToggle.classList.remove('active-gear');
+      if (typeof this.btnSettingsToggle.setAttribute === 'function') {
+        this.btnSettingsToggle.setAttribute('aria-expanded', 'false');
+      }
+    }
+  }
+
   updateThemeIcon(isLight) {
+    if (this.settingsThemeBadge) {
+      this.settingsThemeBadge.textContent = isLight ? 'Sáng ☀️' : 'Tối 🌙';
+    }
     if (!this.themeIconSvg) return;
     if (isLight) {
       // Icon Mặt Trời
@@ -1198,6 +1301,9 @@ class GameEngine {
   }
 
   updateSoundIcon(isMuted) {
+    if (this.settingsSoundBadge) {
+      this.settingsSoundBadge.textContent = isMuted ? 'Tắt 🔇' : 'Bật 🔊';
+    }
     if (!this.soundIconSvg) return;
     if (isMuted) {
       this.soundIconSvg.innerHTML = `<line x1="1" y1="1" x2="23" y2="23"/><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M23 9l-6 6M17 9l6 6"/>`;
@@ -1953,17 +2059,12 @@ class GameEngine {
   renderAnswerButtons(q) {
     this.answersContainer.innerHTML = '';
     const letters = ['A', 'B', 'C', 'D'];
-    const qMeta = this.getOrPrecomputeQuestionMeta(q);
 
     q.options.forEach((optText, idx) => {
       const btn = document.createElement('button');
       btn.className = 'btn-tactile';
       const labelClass = String(optText || '').length > 26 ? 'btn-label opt-len-long' : 'btn-label';
-      const optPos = (qMeta && qMeta.optionPosList && qMeta.optionPosList[idx]) || this.getWordPOS(optText, q);
-      const posBadgeHtml = optPos
-        ? ` <span class="opt-pos-tag${q.mode === 'word_class' ? ' pos-hidden-until-answer' : ''}">${optPos}</span>`
-        : '';
-      btn.innerHTML = `<span class="btn-badge">${letters[idx]}</span> <span class="${labelClass}">${optText}${posBadgeHtml}</span>`;
+      btn.innerHTML = `<span class="btn-badge">${letters[idx]}</span> <span class="${labelClass}">${optText}</span>`;
       this.attachTactileHaptics(btn, 'light');
       btn.addEventListener('click', () => this.handleAnswerSelect(idx, btn));
       this.answersContainer.appendChild(btn);
@@ -2647,7 +2748,7 @@ ${emojiBlocks}
       all: 'Adaptive',
       audio: '🎧 Nghe AI',
       weak: '🔥 Từ Yếu',
-      custom_exam: '📄 Đề Tự Nhập',
+      custom_exam: '📄 Tạo câu hỏi từ đề thi',
       part5_speed: '⚡ Part 5 Speed',
       toeic: 'TOEIC 400-700',
       toeic400: 'TOEIC 400+',
@@ -2695,6 +2796,7 @@ ${emojiBlocks}
     if (this.btnExamImport) {
       this.btnExamImport.addEventListener('click', () => {
         this.triggerHaptic('light');
+        this.closeSettingsMenu();
         this.openExamImportModal();
       });
     }
@@ -2706,27 +2808,39 @@ ${emojiBlocks}
         if (e.target === this.examImportModalOverlay) this.closeExamImportModal();
       });
     }
+    // Bấm nút Chụp Ảnh mở trực tiếp giao diện Camera gốc của máy để chụp nhanh, rõ nét
     if (this.btnOpenExamCamera) {
       this.btnOpenExamCamera.addEventListener('click', () => {
         this.triggerHaptic('medium');
-        this.openExamCamera();
+        this.openNativeExamCamera();
+      });
+    }
+    if (this.btnAddMorePhoto) {
+      this.btnAddMorePhoto.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.openNativeExamCamera();
+      });
+    }
+    if (this.btnClearSavedPhotos) {
+      this.btnClearSavedPhotos.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.clearAllSavedExamPhotos();
       });
     }
     if (this.inputExamCamera) {
       this.inputExamCamera.addEventListener('change', (e) => {
-        const file = e.target && e.target.files ? e.target.files[0] : null;
-        if (file) {
+        const files = e.target && e.target.files ? Array.from(e.target.files) : [];
+        if (files.length > 0) {
           this.stopExamCamera();
-          this.handleExamFileSelected(file);
+          this.addCapturedExamPhotos(files);
         }
+        e.target.value = '';
       });
     }
     if (this.btnOpenNativeCamFallback) {
       this.btnOpenNativeCamFallback.addEventListener('click', () => {
         this.triggerHaptic('light');
-        if (this.inputExamCamera && typeof this.inputExamCamera.click === 'function') {
-          this.inputExamCamera.click();
-        }
+        this.openNativeExamCamera();
       });
     }
     if (this.cameraLensSelector && this.cameraLensSelector.querySelectorAll) {
@@ -2783,12 +2897,13 @@ ${emojiBlocks}
       this.examDropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         if (this.examDropzone.classList) this.examDropzone.classList.remove('drag-over');
-        const file = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files[0] : null;
-        if (file) this.handleExamFileSelected(file);
+        const files = e.dataTransfer && e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+        if (files.length > 0) this.handleExamFilesListSelected(files);
       });
       this.inputExamFile.addEventListener('change', (e) => {
-        const file = e.target && e.target.files ? e.target.files[0] : null;
-        if (file) this.handleExamFileSelected(file);
+        const files = e.target && e.target.files ? Array.from(e.target.files) : [];
+        if (files.length > 0) this.handleExamFilesListSelected(files);
+        e.target.value = '';
       });
     }
     if (this.btnClearExamFile) {
@@ -2873,6 +2988,8 @@ Answer: A`;
   }
 
   openExamImportModal() {
+    this.closeSettingsMenu();
+    this.renderSavedExamPhotosGallery();
     this.renderCustomExamPreview();
     if (this.examImportModalOverlay) {
       this.examImportModalOverlay.classList.add('active');
@@ -2883,6 +3000,12 @@ Answer: A`;
     this.stopExamCamera();
     if (this.examImportModalOverlay) {
       this.examImportModalOverlay.classList.remove('active');
+    }
+  }
+
+  openNativeExamCamera() {
+    if (this.inputExamCamera && typeof this.inputExamCamera.click === 'function') {
+      this.inputExamCamera.click();
     }
   }
 
@@ -3365,8 +3488,178 @@ Answer: A`;
     this.stopExamCamera();
   }
 
+  async compressImageFileForStorage(file) {
+    const rawDataUrl = await new Promise((resolve, reject) => {
+      if (typeof FileReader === 'undefined') {
+        reject(new Error('Trình duyệt không hỗ trợ FileReader'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(String((e.target && e.target.result) || ''));
+      reader.onerror = () => reject(new Error('Không thể đọc ảnh'));
+      reader.readAsDataURL(file);
+    });
+
+    // Nén ảnh qua Canvas để lưu được nhiều ảnh vào LocalStorage mà vẫn sắc nét cho AI đọc chữ
+    if (typeof Image !== 'undefined' && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      try {
+        const compressedDataUrl = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const maxDim = 1280;
+              let w = img.naturalWidth || img.width || 1000;
+              let h = img.naturalHeight || img.height || 750;
+              if (w > maxDim || h > maxDim) {
+                if (w >= h) {
+                  h = Math.round((h * maxDim) / w);
+                  w = maxDim;
+                } else {
+                  w = Math.round((w * maxDim) / h);
+                  h = maxDim;
+                }
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext && canvas.getContext('2d');
+              if (ctx && typeof ctx.drawImage === 'function' && typeof canvas.toDataURL === 'function') {
+                ctx.drawImage(img, 0, 0, w, h);
+                const out = canvas.toDataURL('image/jpeg', 0.8);
+                if (out && out.startsWith('data:image/')) {
+                  resolve(out);
+                  return;
+                }
+              }
+            } catch (e) {}
+            resolve(rawDataUrl);
+          };
+          img.onerror = () => resolve(rawDataUrl);
+          img.src = rawDataUrl;
+        });
+        return compressedDataUrl;
+      } catch (e) {}
+    }
+    return rawDataUrl;
+  }
+
+  async addCapturedExamPhotos(filesList) {
+    const validFiles = Array.from(filesList || []).filter(Boolean);
+    if (validFiles.length === 0) return;
+
+    if (!Array.isArray(this.savedExamPhotos)) {
+      this.savedExamPhotos = [];
+    }
+
+    let addedCount = 0;
+    for (const file of validFiles) {
+      try {
+        const dataUrl = await this.compressImageFileForStorage(file);
+        const commaIdx = dataUrl.indexOf(',');
+        const base64Data = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const photoItem = {
+          id: `photo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name || `anh-de-${timeStr.replace(':', '')}.jpg`,
+          mimeType: 'image/jpeg',
+          dataUrl: dataUrl.startsWith('data:') ? dataUrl : `data:image/jpeg;base64,${base64Data}`,
+          base64Data,
+          timeLabel: timeStr
+        };
+        this.savedExamPhotos.push(photoItem);
+        addedCount++;
+      } catch (err) {}
+    }
+
+    if (addedCount > 0) {
+      this.saveSavedExamPhotos();
+      this.renderSavedExamPhotosGallery();
+      soundEngine.playCorrect(1);
+      this.triggerHaptic('success');
+
+      if (this.examImportStatus) {
+        this.examImportStatus.style.display = 'block';
+        this.examImportStatus.textContent = `📸 Đã lưu ${this.savedExamPhotos.length} ảnh đề thi trên máy! Bạn có thể bấm "➕ Chụp thêm" để chụp nhiều trang hoặc bấm "✨ Tạo Câu Hỏi Trắc Nghiệm Ngay".`;
+      }
+    }
+  }
+
+  removeSavedExamPhoto(photoId) {
+    if (!Array.isArray(this.savedExamPhotos)) return;
+    this.savedExamPhotos = this.savedExamPhotos.filter(p => p && p.id !== photoId);
+    this.saveSavedExamPhotos();
+    this.renderSavedExamPhotosGallery();
+  }
+
+  clearAllSavedExamPhotos() {
+    this.savedExamPhotos = [];
+    this.saveSavedExamPhotos();
+    this.renderSavedExamPhotosGallery();
+    if (this.examImportStatus) {
+      this.examImportStatus.style.display = 'block';
+      this.examImportStatus.textContent = '🗑️ Đã xóa toàn bộ ảnh đề thi đã lưu trên máy.';
+    }
+  }
+
+  renderSavedExamPhotosGallery() {
+    const photos = Array.isArray(this.savedExamPhotos) ? this.savedExamPhotos : [];
+    if (this.examPhotoGallerySection) {
+      this.examPhotoGallerySection.style.display = photos.length > 0 ? 'flex' : 'none';
+    }
+    if (this.examPhotoCountBadge) {
+      this.examPhotoCountBadge.textContent = `🖼️ Ảnh đề đã lưu trên máy (${photos.length} ảnh)`;
+    }
+    if (!this.examPhotoGalleryList) return;
+
+    this.examPhotoGalleryList.innerHTML = '';
+    photos.forEach((photo, idx) => {
+      const card = document.createElement('div');
+      card.className = 'exam-photo-card';
+      card.innerHTML = `
+        <img class="exam-photo-thumb" src="${photo.dataUrl}" alt="Ảnh đề #${idx + 1}" loading="lazy">
+        <span class="exam-photo-badge">Ảnh #${idx + 1}${photo.timeLabel ? ` • ${photo.timeLabel}` : ''}</span>
+        <button type="button" class="btn-remove-photo" title="Xóa ảnh này" aria-label="Xóa ảnh #${idx + 1}">✕</button>
+      `;
+      const removeBtn = card.querySelector ? card.querySelector('.btn-remove-photo') : null;
+      if (removeBtn && typeof removeBtn.addEventListener === 'function') {
+        removeBtn.addEventListener('click', (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.triggerHaptic('light');
+          this.removeSavedExamPhoto(photo.id);
+        });
+      }
+      this.examPhotoGalleryList.appendChild(card);
+    });
+  }
+
+  handleExamFilesListSelected(files) {
+    const list = Array.from(files || []).filter(Boolean);
+    if (list.length === 0) return;
+
+    const imageFiles = list.filter(f => {
+      const t = String(f.type || '').toLowerCase();
+      const n = String(f.name || '').toLowerCase();
+      return t.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(n);
+    });
+    const docFiles = list.filter(f => !imageFiles.includes(f));
+
+    if (imageFiles.length > 0) {
+      this.addCapturedExamPhotos(imageFiles);
+    }
+    if (docFiles.length > 0) {
+      this.handleExamFileSelected(docFiles[0]);
+    }
+  }
+
   handleExamFileSelected(file) {
     if (!file) return;
+    const fType = String(file.type || '').toLowerCase();
+    const fName = String(file.name || '').toLowerCase();
+    if (!file.precomputedBase64 && (fType.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(fName))) {
+      this.addCapturedExamPhotos([file]);
+      return;
+    }
     this.selectedExamFile = file;
     this.triggerHaptic('light');
     if (this.examSelectedFilePill) {
@@ -3411,10 +3704,12 @@ Answer: A`;
 
   async convertExamFileToQuestions() {
     const rawText = this.examRawTextInput ? String(this.examRawTextInput.value || '').trim() : '';
-    if (!this.selectedExamFile && !rawText) {
+    const savedPhotos = Array.isArray(this.savedExamPhotos) ? this.savedExamPhotos : [];
+
+    if (savedPhotos.length === 0 && !this.selectedExamFile && !rawText) {
       if (this.examImportStatus) {
         this.examImportStatus.style.display = 'block';
-        this.examImportStatus.textContent = '⚠️ Vui lòng chọn file đề thi (Ảnh, PDF, Word) hoặc dán nội dung đề thi vào ô văn bản!';
+        this.examImportStatus.textContent = '⚠️ Vui lòng chụp ảnh đề thi, chọn file (Ảnh, PDF, Word) hoặc dán nội dung đề thi vào ô văn bản!';
       }
       this.triggerHaptic('error');
       return;
@@ -3426,7 +3721,8 @@ Answer: A`;
     }
     if (this.examImportStatus) {
       this.examImportStatus.style.display = 'block';
-      this.examImportStatus.textContent = '🤖 Đang đọc cấu trúc đề thi và chuyển thành câu hỏi Trắc nghiệm & Điền từ...';
+      const photoInfo = savedPhotos.length > 0 ? `${savedPhotos.length} ảnh đề thi` : 'tài liệu đề thi';
+      this.examImportStatus.textContent = `🤖 Đang đọc ${photoInfo} và chuyển thành câu hỏi Trắc nghiệm & Điền từ...`;
     }
 
     try {
@@ -3438,7 +3734,17 @@ Answer: A`;
         fileName = this.selectedExamFile.name || 'exam-file';
         mimeType = this.selectedExamFile.type || '';
         base64Data = await this.readFileAsBase64(this.selectedExamFile);
+      } else if (savedPhotos.length > 0) {
+        fileName = savedPhotos[0].name || 'captured-exam.jpg';
+        mimeType = savedPhotos[0].mimeType || 'image/jpeg';
+        base64Data = savedPhotos[0].base64Data || '';
       }
+
+      const imagesPayload = savedPhotos.map((p, idx) => ({
+        fileName: p.name || `exam-page-${idx + 1}.jpg`,
+        mimeType: p.mimeType || 'image/jpeg',
+        base64Data: p.base64Data || ''
+      })).filter(item => Boolean(item.base64Data));
 
       const response = await fetch('/api/exam-import', {
         method: 'POST',
@@ -3447,6 +3753,7 @@ Answer: A`;
           fileName,
           mimeType,
           base64Data,
+          images: imagesPayload,
           rawText,
           questionCount: this.examQuestionCount || 10,
           questionTypeMode: this.examQuestionTypeMode || 'mixed'
@@ -3467,7 +3774,7 @@ Answer: A`;
 
       if (this.examImportStatus) {
         this.examImportStatus.style.display = 'block';
-        this.examImportStatus.textContent = `🎉 Đã tạo xong ${data.questions.length} câu hỏi! Bấm nút màu xanh lá bên dưới để vào làm bài ngay.`;
+        this.examImportStatus.textContent = `🎉 Đã tạo xong ${data.questions.length} câu hỏi (Ảnh vẫn được lưu trên máy cho các lần học sau)! Bấm nút màu xanh lá bên dưới để làm bài ngay.`;
       }
     } catch (err) {
       if (this.examImportStatus) {

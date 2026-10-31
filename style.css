@@ -299,7 +299,7 @@ body.light-theme .orb-3 {
   align-items: center;
   overflow: hidden;
   box-sizing: border-box;
-  padding: max(10px, env(safe-area-inset-top, 12px)) clamp(10px, 3.5vw, 16px) max(10px, env(safe-area-inset-bottom, 12px)) clamp(10px, 3.5vw, 16px);
+  padding: max(10px, env(safe-area-inset-top, 12px)) clamp(10px, 3.5vw, 16px) max(22px, calc(env(safe-area-inset-bottom, 10px) + 16px)) clamp(10px, 3.5vw, 16px);
   gap: clamp(4px, 0.8vh, 8px);
   transition: background-color 0.3s ease;
 }
@@ -316,14 +316,16 @@ body.light-theme .orb-3 {
    ZONE 1: TOP BAR LINH HOẠT CHO MỌI MÀN HÌNH ĐIỆN THOẠI (KHÔNG CÓ DYNAMIC ISLAND GAP)
    ========================================================================== */
 .zone-header {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: 0;
   margin-bottom: 2px;
-  z-index: 10;
+  z-index: 1800;
   width: 100%;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .stats-row {
@@ -1124,7 +1126,8 @@ body.light-theme .blank-slot {
   display: flex;
   flex-direction: column;
   gap: clamp(6px, 0.9vh, 8px);
-  margin-bottom: 2px;
+  margin-bottom: clamp(6px, 1.2dvh, 14px);
+  padding-bottom: clamp(2px, 0.5dvh, 6px);
   z-index: 10;
   flex-shrink: 0;
 }
@@ -1373,19 +1376,21 @@ body:not(.light-theme) .btn-tactile.wrong {
   bottom: 0;
   left: 0;
   right: 0;
-  max-height: 50%;
+  min-height: 38dvh;
+  max-height: 78dvh;
   overflow-y: auto;
   background: var(--bg-glass-solid);
-  border-top: 1px solid var(--glass-border);
-  border-radius: 26px 26px 0 0;
-  padding: 12px 20px 20px 20px;
-  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.85);
+  border-top: 1.5px solid var(--glass-border);
+  border-radius: 28px 28px 0 0;
+  padding: 16px 20px max(46px, calc(env(safe-area-inset-bottom, 16px) + 34px)) 20px;
+  box-shadow: 0 -14px 52px rgba(0, 0, 0, 0.88);
   transform: translateY(110%);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 50;
+  z-index: 1900;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .drawer-handle {
@@ -1503,21 +1508,23 @@ body.light-theme .feedback-explanation {
 
 .feedback-btn {
   width: 100%;
-  height: 54px;
-  margin-top: 4px;
+  height: 56px;
+  min-height: 56px;
+  margin-top: 10px;
+  margin-bottom: clamp(12px, 2.5dvh, 22px);
   border-radius: 18px;
   background: var(--accent-primary);
   border: none;
   border-bottom: 4px solid var(--accent-hover);
   color: #fff;
-  font-size: 1.15rem;
+  font-size: 1.18rem;
   font-weight: 900;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  box-shadow: 0 4px 16px var(--accent-glow);
+  box-shadow: 0 6px 20px var(--accent-glow);
   transition: transform 0.08s ease;
 }
 
@@ -1701,11 +1708,11 @@ body.light-theme .btn-audio-replay.playing {
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  z-index: 200;
+  z-index: 2500;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
@@ -1718,19 +1725,21 @@ body.light-theme .btn-audio-replay.playing {
 
 .modal-card {
   width: 100%;
-  max-width: 400px;
-  max-height: 90vh;
+  max-width: 420px;
+  min-height: 76dvh;
+  max-height: 94dvh;
   overflow-y: auto;
   background: var(--bg-glass-solid);
   border: 1px solid var(--glass-border);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
   border-radius: 32px;
-  padding: 24px 18px;
+  padding: 24px 18px max(30px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: space-between;
   text-align: center;
-  gap: 12px;
+  gap: 14px;
   transform: translateY(20px) scale(0.95);
   transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -1883,13 +1892,13 @@ body.light-theme .btn-audio-replay.playing {
 .vault-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(0, 0, 0, 0.94);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  z-index: 250;
+  z-index: 2600;
   display: flex;
   flex-direction: column;
-  padding: max(20px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)) 16px;
+  padding: max(20px, env(safe-area-inset-top)) 16px max(32px, calc(env(safe-area-inset-bottom, 12px) + 20px)) 16px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
@@ -2097,10 +2106,10 @@ body.light-theme .feedback-exam-context {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  z-index: 250;
+  z-index: 2500;
   display: flex;
   align-items: flex-end;
   opacity: 0;
@@ -2115,12 +2124,13 @@ body.light-theme .feedback-exam-context {
 
 .grade-modal-sheet {
   width: 100%;
-  max-height: 85%;
+  min-height: 88dvh;
+  max-height: 94dvh;
   background: #0f172a;
   border-top-left-radius: 28px;
   border-top-right-radius: 28px;
   border-top: 1.5px solid rgba(255, 255, 255, 0.2);
-  padding: 14px 18px 28px;
+  padding: 16px 18px max(36px, calc(env(safe-area-inset-bottom, 14px) + 24px));
   display: flex;
   flex-direction: column;
   box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.85);
@@ -2513,9 +2523,11 @@ body.light-theme .btn-mastery-open-alt {
   color: #047857;
 }
 
-/* Mastery Modal Dashboard */
+/* Mastery Modal Dashboard (Popup cao toàn màn hình hiển thị nhiều từ vựng) */
 .mastery-modal-sheet {
-  max-height: 88%;
+  min-height: 92dvh;
+  height: 94dvh;
+  max-height: 95dvh;
   gap: 10px;
 }
 
@@ -2651,8 +2663,10 @@ body.light-theme .m-tab-btn {
 .mastery-word-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 195px;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-height: 220px;
+  max-height: none;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -3152,9 +3166,11 @@ body.light-theme .mastery-search-input {
 }
 
 .exam-import-modal-sheet {
-  max-height: 92dvh;
-  gap: 11px;
-  padding: 16px 18px 26px;
+  min-height: 94dvh;
+  height: 95dvh;
+  max-height: 96dvh;
+  gap: 12px;
+  padding: 16px 18px max(38px, calc(env(safe-area-inset-bottom, 16px) + 26px));
 }
 
 .exam-import-modal-sheet .grade-modal-header h3 {
@@ -3858,19 +3874,22 @@ body.light-theme .btn-clear-custom-bank {
 /* 1. iPhone màn hình ngắn / Safari hiện thanh địa chỉ (Portrait < 700px height) */
 @media (max-height: 700px) and (orientation: portrait) {
   .screen-content {
-    padding: 8px 10px;
+    padding: 8px 10px max(18px, calc(env(safe-area-inset-bottom, 8px) + 12px)) 10px;
     gap: 4px;
   }
   .zone-question {
     margin: 2px auto;
   }
   .question-card {
-    min-height: 140px;
+    min-height: 136px;
     padding: 10px 12px;
     gap: 6px;
   }
   .vocab-image-container {
-    min-height: 115px;
+    min-height: 112px;
+  }
+  .zone-actions {
+    margin-bottom: 4px;
   }
   .powerups-row {
     height: 32px;
@@ -3899,7 +3918,7 @@ body.light-theme .btn-clear-custom-bank {
     border-radius: 32px;
   }
   .screen-content {
-    padding: 18px 28px;
+    padding: 18px 28px max(28px, calc(env(safe-area-inset-bottom, 12px) + 22px)) 28px;
     gap: 12px;
   }
   .zone-header,
@@ -4087,7 +4106,7 @@ body.light-theme .btn-clear-custom-bank {
 }
 
 /* ==========================================================================
-   KÝ HIỆU LOẠI TỪ (POS TAG BADGE) TRONG POPUP & NÚT ĐÁP ÁN - GỌN GÀNG, DỄ NHÌN
+   KÝ HIỆU LOẠI TỪ (POS TAG BADGE) TRONG POPUP & MENU SETTING CÓ ANIMATION
    ========================================================================== */
 .pos-tag-badge {
   display: inline-flex;
@@ -4114,28 +4133,363 @@ body.light-theme .pos-tag-badge {
   border-color: rgba(2, 132, 199, 0.28);
 }
 
-.opt-pos-tag {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 0.72em;
-  font-weight: 700;
-  color: var(--text-secondary);
-  opacity: 0.82;
-  margin-left: 4px;
+/* Nút "Tạo câu hỏi từ đề thi" trên thanh Header */
+.exam-import-pill-btn {
+  padding: 0 9px;
+  max-width: 175px;
+}
+
+.exam-import-pill-text {
   white-space: nowrap;
-  transition: opacity 0.2s ease, color 0.2s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.btn-tactile.correct .opt-pos-tag {
-  color: #10b981;
+@media (max-width: 390px) {
+  .exam-import-pill-btn {
+    padding: 0 7px;
+    font-size: 0.68rem;
+    max-width: 142px;
+  }
+}
+
+/* Ô Setting gom Âm thanh, Chế độ Tối/Sáng & Hồ sơ cá nhân */
+.settings-menu-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-trigger-btn .settings-gear-svg {
+  transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.settings-trigger-btn.active-gear {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+body.light-theme .settings-trigger-btn.active-gear {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
+.settings-trigger-btn.active-gear .settings-gear-svg {
+  transform: rotate(90deg) scale(1.08);
+}
+
+.settings-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 242px;
+  padding: 8px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.98);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(56, 189, 248, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: top right;
+  transform: translateY(-10px) scale(0.86);
+  transition: opacity 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body.light-theme .settings-dropdown-menu {
+  background: rgba(255, 255, 255, 0.99);
+  border-color: #cbd5e1;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.2);
+}
+
+.settings-dropdown-menu.open {
   opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
 }
 
-.btn-tactile.wrong .opt-pos-tag {
-  color: #f87171;
-  opacity: 0.95;
+/* ==========================================================================
+   GALLERY HIỂN THỊ TRỰC TIẾP NHIỀU ẢNH ĐỀ THI ĐÃ CHỤP (LƯU LOCAL TRÊN MÁY)
+   ========================================================================== */
+.exam-photo-gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1.5px solid rgba(56, 189, 248, 0.38);
+  border-radius: 16px;
+  padding: 12px;
+  animation: fadeIn 0.25s ease;
 }
 
-.pos-hidden-until-answer {
-  display: none !important;
+body.light-theme .exam-photo-gallery-section {
+  background: #f0f9ff;
+  border-color: #7dd3fc;
 }
+
+.exam-photo-gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exam-photo-gallery-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #38bdf8;
+}
+
+body.light-theme .exam-photo-gallery-title {
+  color: #0369a1;
+}
+
+.exam-photo-gallery-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-add-more-photo {
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: rgba(14, 165, 233, 0.22);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  color: #7dd3fc;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+body.light-theme .btn-add-more-photo {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
+}
+
+.btn-add-more-photo:active {
+  transform: scale(0.95);
+}
+
+.btn-clear-all-photos {
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+body.light-theme .btn-clear-all-photos {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+.btn-clear-all-photos:active {
+  transform: scale(0.95);
+}
+
+.exam-photo-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+@media (min-width: 520px) {
+  .exam-photo-gallery-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.exam-photo-card {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #090d16;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  aspect-ratio: 4 / 3;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  animation: slotPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.light-theme .exam-photo-card {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.1);
+}
+
+.exam-photo-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.exam-photo-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.84);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #f8fafc;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  max-width: calc(100% - 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-remove-photo {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.9);
+  border: 1.5px solid #ffffff;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease;
+}
+
+.btn-remove-photo:active {
+  transform: scale(0.88);
+}
+
+.settings-menu-item {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 11px;
+  border-radius: 13px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  font-family: var(--font-be-vietnam);
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+
+body.light-theme .settings-menu-item {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.settings-dropdown-menu.open .settings-menu-item {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.settings-dropdown-menu.open .settings-menu-item:nth-child(1) {
+  transition-delay: 0.03s;
+}
+
+.settings-dropdown-menu.open .settings-menu-item:nth-child(2) {
+  transition-delay: 0.07s;
+}
+
+.settings-dropdown-menu.open .settings-menu-item:nth-child(3) {
+  transition-delay: 0.11s;
+}
+
+.settings-menu-item:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.14);
+}
+
+body.light-theme .settings-menu-item:hover {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+}
+
+.settings-menu-item:active {
+  transform: scale(0.97) !important;
+}
+
+.settings-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+body.light-theme .settings-item-icon {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.settings-item-text {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-item-badge {
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+body.light-theme .settings-item-badge {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.settings-item-badge.accent {
+  background: rgba(99, 102, 241, 0.22);
+  color: #a5b4fc;
+}
+
+body.light-theme .settings-item-badge.accent {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+

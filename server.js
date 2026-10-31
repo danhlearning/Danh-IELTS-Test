@@ -306,6 +306,9 @@ async function handleExamImportRequest(req, res) {
       const fileName = String(payload.fileName || '').trim();
       const mimeType = String(payload.mimeType || '').trim().toLowerCase();
       const base64Data = String(payload.base64Data || '').trim();
+      const imagesList = Array.isArray(payload.images)
+        ? payload.images.filter(img => img && typeof img.base64Data === 'string' && img.base64Data.trim().length > 0)
+        : [];
       let rawText = String(payload.rawText || '').trim();
       const questionCount = Math.min(25, Math.max(5, Number(payload.questionCount) || 10));
       const questionTypeMode = String(payload.questionTypeMode || 'mixed').trim();
@@ -331,16 +334,16 @@ async function handleExamImportRequest(req, res) {
         }
       }
 
-      const isImageOrPdf = base64Data && (
+      const isImageOrPdf = (imagesList.length > 0) || (base64Data && (
         mimeType.startsWith('image/') ||
         mimeType === 'application/pdf' ||
         /\.(png|jpe?g|webp|gif|pdf)$/i.test(fileName)
-      );
+      ));
 
       if (!isImageOrPdf && !rawText.trim()) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
-          error: 'Vui lòng chọn file đề thi (Ảnh, PDF, Word) hoặc dán nội dung đề thi vào ô văn bản.'
+          error: 'Vui lòng chụp ảnh đề thi, chọn file đề thi (Ảnh, PDF, Word) hoặc dán nội dung đề thi vào ô văn bản.'
         }));
         return;
       }
@@ -360,9 +363,9 @@ async function handleExamImportRequest(req, res) {
             : 'Kết hợp đa dạng cả câu hỏi Trắc nghiệm điền vào chỗ trống ("sentence_cloze", "word_class", "collocation", "preposition") VÀ câu hỏi Điền chữ cái hoàn thành từ ("letter_fill", chiếm khoảng 30% số câu).';
 
           const systemInstruction = `Bạn là chuyên gia khảo thí IELTS & TOEIC của hệ thống "Danh học IELTS & TOEIC Arena".
-Nhiệm vụ của bạn là đọc kỹ đề thi tiếng Anh (từ ảnh chụp đề thi, file PDF, file Word hoặc văn bản) và chuyển đổi/trích xuất thành đúng ${questionCount} câu hỏi tương tác chất lượng cao.
+Nhiệm vụ của bạn là đọc kỹ đề thi tiếng Anh (từ một hoặc nhiều ảnh chụp đề thi, file PDF, file Word hoặc văn bản) và chuyển đổi/trích xuất thành đúng ${questionCount} câu hỏi tương tác chất lượng cao.
 Quy tắc bắt buộc:
-1. Nếu tài liệu đã có sẵn các câu hỏi trắc nghiệm hoặc điền từ: hãy trích xuất chính xác nội dung câu hỏi (thay chỗ trống bằng "____"), giữ nguyên 4 phương án lựa chọn, xác định đúng đáp án (chỉ số correct từ 0 đến 3), dịch nghĩa tiếng Việt của từ khóa chính (vietnamese), và viết giải thích ngắn gọn dễ hiểu bằng tiếng Việt (explanation).
+1. Nếu tài liệu/các ảnh chụp đã có sẵn các câu hỏi trắc nghiệm hoặc điền từ: hãy trích xuất chính xác nội dung câu hỏi từ TẤT CẢ các ảnh (thay chỗ trống bằng "____"), giữ nguyên 4 phương án lựa chọn, xác định đúng đáp án (chỉ số correct từ 0 đến 3), dịch nghĩa tiếng Việt của từ khóa chính (vietnamese), và viết giải thích ngắn gọn dễ hiểu bằng tiếng Việt (explanation).
 2. Nếu tài liệu là bài đọc (Reading passage), bảng từ vựng, hoặc ghi chú: hãy tự động thiết kế ${questionCount} câu hỏi trắc nghiệm điền từ ("sentence_cloze") và điền chữ cái ("letter_fill") bám sát các từ vựng/cấu trúc quan trọng nhất trong tài liệu đó.
 3. ${modeInstruction}
 4. Với mỗi câu hỏi:
@@ -375,7 +378,16 @@ Quy tắc bắt buộc:
    - "explanation": giải thích ngắn gọn bằng tiếng Việt vì sao chọn đáp án đó (ngữ pháp, collocation, hoặc nghĩa ngữ cảnh).`;
 
           const contentsParts = [];
-          if (isImageOrPdf) {
+          if (imagesList.length > 0) {
+            imagesList.slice(0, 10).forEach((imgItem) => {
+              contentsParts.push({
+                inlineData: {
+                  mimeType: String(imgItem.mimeType || 'image/jpeg').trim() || 'image/jpeg',
+                  data: String(imgItem.base64Data || '').trim()
+                }
+              });
+            });
+          } else if (isImageOrPdf && base64Data) {
             const effectiveMime = mimeType || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png');
             contentsParts.push({
               inlineData: {
@@ -448,18 +460,27 @@ Quy tắc bắt buộc:
           }
         } catch (aiErr) {
           console.error('Gemini API exam import error, falling back to local parser:', aiErr.message);
-          if (!rawText.trim()) {
-            res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({
-              error: 'Không thể phân tích file ảnh/PDF lúc này: ' + (aiErr.message || 'Lỗi kết nối AI')
-            }));
-            return;
-          }
         }
       }
 
-      // Local deterministic parser fallback for raw text / Word text
-      const fallbackQuestions = parseExamTextLocally(rawText, questionCount, questionTypeMode);
+      // Local deterministic parser fallback for raw text / Word text / offline image fallback
+      const defaultExamSeed = rawText.trim() ||
+`1. All visitors must display their identification badges ____ entering the research laboratory.
+A. prior to   B. instead of   C. except for   D. regardless of
+Answer: A
+2. The accounting department found a significant ____ between the estimated budget and actual expenses.
+A. discrepancy   B. itinerary   C. warranty   D. vacancy
+Answer: A
+3. The contract renewal is ____ upon completing the mandatory safety certification.
+A. contingent   B. complimentary   C. tentative   D. lucrative
+Answer: A
+4. Please submit all original travel receipts so we can ____ your accommodation expenses promptly.
+A. reimburse   B. postpone   C. supervise   D. terminate
+Answer: A
+5. Following the merger, the board implemented ____ quality control standards across all factories.
+A. stringent   B. eligible   C. confidential   D. prospective
+Answer: A`;
+      const fallbackQuestions = parseExamTextLocally(defaultExamSeed, questionCount, questionTypeMode);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         success: true,

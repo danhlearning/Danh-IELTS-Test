@@ -91,28 +91,56 @@
               <span id="streak-text">0 COMBO</span>
             </div>
 
-            <!-- Cánh Phải (Right Wing): Cụm điều khiển Chế độ Nghe, Thống kê Mastery, Kho từ, Loa, Theme -->
+            <!-- Cánh Phải (Right Wing): Cụm điều khiển Đấu trường, Tạo câu hỏi từ đề thi, Nghe & Menu Cài đặt -->
             <div class="header-wing-right">
               <div class="top-actions">
                 <button class="grade-filter-pill-btn" id="btn-grade-filter" title="Chọn Đấu Trường / Chế Độ Học">
                   <span class="g-icon">🎓</span>
                   <span id="current-filter-pill-label">Adaptive</span>
                 </button>
-                <button class="icon-btn" id="btn-exam-import" title="Chuyển đề thi Ảnh / PDF / Word thành câu hỏi Trắc nghiệm & Điền từ">
-                  <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                <button class="grade-filter-pill-btn exam-import-pill-btn" id="btn-exam-import" title="Tạo câu hỏi từ đề thi">
+                  <span class="g-icon">📄</span>
+                  <span class="exam-import-pill-text">Tạo câu hỏi từ đề thi</span>
                 </button>
                 <button class="icon-btn" id="btn-audio-quiz-mode" title="Bật/Tắt Chế độ Nghe Phát Âm (Audio Quiz)">
                   <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
                 </button>
-                <button class="icon-btn" id="btn-mastery-stats" title="Bảng thống kê Tiến độ Mastery Lv.1-Lv.5 & Sao lưu JSON">
-                  <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                </button>
-                <button class="icon-btn" id="btn-sound-toggle" title="Bật/Tắt Âm thanh">
-                  <svg id="sound-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                </button>
-                <button class="icon-btn" id="btn-theme-toggle" title="Chuyển chế độ Sáng/Tối">
-                  <svg id="theme-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                </button>
+
+                <!-- Ô Setting gom Âm thanh, Chế độ Tối/Sáng & Hồ sơ cá nhân (Bấm vào mới hiện animation) -->
+                <div class="settings-menu-wrapper" id="settings-menu-wrapper">
+                  <button type="button" class="icon-btn settings-trigger-btn" id="btn-settings-toggle" title="Cài đặt & Hồ sơ cá nhân" aria-expanded="false">
+                    <svg class="action-svg settings-gear-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                  </button>
+
+                  <div class="settings-dropdown-menu" id="settings-dropdown-menu" aria-hidden="true">
+                    <button type="button" class="settings-menu-item" id="btn-sound-toggle" title="Bật/Tắt Âm thanh">
+                      <span class="settings-item-icon">
+                        <svg id="sound-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                      </span>
+                      <span class="settings-item-text">Âm thanh</span>
+                      <span class="settings-item-badge" id="settings-sound-badge">Bật</span>
+                    </button>
+
+                    <button type="button" class="settings-menu-item" id="btn-theme-toggle" title="Chuyển chế độ Sáng/Tối">
+                      <span class="settings-item-icon">
+                        <svg id="theme-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                      </span>
+                      <span class="settings-item-text">Chế độ Tối / Sáng</span>
+                      <span class="settings-item-badge" id="settings-theme-badge">Tối</span>
+                    </button>
+
+                    <button type="button" class="settings-menu-item" id="btn-mastery-stats" title="Hồ sơ cá nhân & Tiến độ học tập">
+                      <span class="settings-item-icon">
+                        <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </span>
+                      <span class="settings-item-text">Hồ sơ cá nhân</span>
+                      <span class="settings-item-badge accent">Mở ➔</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -361,8 +389,8 @@
 
               <button class="grade-option-btn" data-filter="custom_exam">
                 <div class="g-info">
-                  <span class="g-title">📄 Đề Thi Tự Nhập (Ảnh / PDF / Word AI)</span>
-                  <span class="g-desc">Luyện bộ câu hỏi trắc nghiệm & điền từ chuyển đổi từ file đề thi của bạn</span>
+                  <span class="g-title">📄 Tạo câu hỏi từ đề thi</span>
+                  <span class="g-desc">Chụp ảnh đề thi, tải file PDF / Word hoặc dán chữ để tạo câu hỏi</span>
                 </div>
                 <span class="g-badge" id="custom-exam-count-badge">Tải đề</span>
               </button>
@@ -595,27 +623,39 @@
           <div class="grade-modal-sheet exam-import-modal-sheet">
             <div class="sheet-handle"></div>
             <div class="grade-modal-header">
-              <h3>📄 Tạo Câu Hỏi Từ Đề Thi</h3>
+              <h3>📄 Tạo câu hỏi từ đề thi</h3>
               <button class="modal-close-icon-btn" id="btn-exam-import-close" aria-label="Đóng">✕</button>
             </div>
 
             <!-- Bước 1: Chọn cách nhập đề thi (Chụp ảnh / Chọn file / Dán chữ) -->
             <div class="exam-step-guide">Bước 1: Chọn 1 trong 3 cách đưa đề thi vào</div>
 
-            <!-- Cách 1: Mở Camera Chụp Đề -->
+            <!-- Cách 1: Mở Trực Tiếp Camera Gốc Chụp Đề (Hỗ trợ chụp nhiều ảnh & lưu Local) -->
             <div class="exam-capture-actions-row">
               <button type="button" class="btn-camera-capture" id="btn-open-exam-camera">
-                <span>📷 Cách 1: Mở Camera Toàn Màn Hình</span>
+                <span>📷 Cách 1: Chụp Ảnh Đề Thi (Mở Camera Gốc)</span>
               </button>
               <input type="file" id="input-exam-camera" accept="image/*" capture="environment" style="display: none;">
             </div>
 
+            <!-- Khu vực hiển thị trực tiếp các ảnh đề thi đã chụp (Tỉ lệ vừa phải, rõ nét, lưu Local cho các lần học) -->
+            <div class="exam-photo-gallery-section" id="exam-photo-gallery-section" style="display: none;">
+              <div class="exam-photo-gallery-header">
+                <span class="exam-photo-gallery-title" id="exam-photo-count-badge">🖼️ Ảnh đề đã lưu trên máy (0 ảnh)</span>
+                <div class="exam-photo-gallery-actions">
+                  <button type="button" class="btn-add-more-photo" id="btn-add-more-photo">➕ Chụp thêm</button>
+                  <button type="button" class="btn-clear-all-photos" id="btn-clear-saved-photos">🗑️ Xóa hết</button>
+                </div>
+              </div>
+              <div class="exam-photo-gallery-grid" id="exam-photo-gallery-list"></div>
+            </div>
+
             <!-- Cách 2: Chạm chọn File Ảnh / PDF / Word có sẵn trong máy -->
             <div class="exam-dropzone" id="exam-dropzone">
-              <input type="file" id="input-exam-file" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.doc,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" style="display: none;">
-              <div class="dropzone-main-title" id="exam-dropzone-title">📁 Cách 2: Chạm vào đây để chọn File đề thi</div>
+              <input type="file" id="input-exam-file" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.doc,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" style="display: none;">
+              <div class="dropzone-main-title" id="exam-dropzone-title">📁 Cách 2: Chạm vào đây để chọn File / Nhiều Ảnh đề thi</div>
               <div class="dropzone-icon-row">
-                <span class="dz-badge">🖼️ Ảnh chụp</span>
+                <span class="dz-badge">🖼️ Nhiều Ảnh</span>
                 <span class="dz-badge">📕 File PDF</span>
                 <span class="dz-badge">📘 File Word</span>
               </div>
