@@ -605,22 +605,9 @@
             <!-- Cách 1: Mở Camera Chụp Đề -->
             <div class="exam-capture-actions-row">
               <button type="button" class="btn-camera-capture" id="btn-open-exam-camera">
-                <span>📷 Cách 1: Mở Camera Chụp Ảnh Đề</span>
+                <span>📷 Cách 1: Mở Camera Toàn Màn Hình</span>
               </button>
               <input type="file" id="input-exam-camera" accept="image/*" capture="environment" style="display: none;">
-            </div>
-
-            <!-- Khung Camera Trực Tiếp (Live Camera Viewfinder) -->
-            <div class="exam-camera-panel" id="exam-camera-panel" style="display: none;">
-              <div class="camera-video-wrapper">
-                <video id="exam-camera-video" autoplay playsinline muted></video>
-                <div class="camera-scan-frame"></div>
-              </div>
-              <div class="camera-controls-bar">
-                <button type="button" class="btn-cam-secondary" id="btn-switch-camera" title="Đổi Camera Trước / Sau">🔄 Đổi Cam</button>
-                <button type="button" class="btn-cam-snap" id="btn-snap-exam-photo">📸 Chụp Ảnh Đề</button>
-                <button type="button" class="btn-cam-secondary" id="btn-close-camera">✕ Đóng</button>
-              </div>
             </div>
 
             <!-- Cách 2: Chạm chọn File Ảnh / PDF / Word có sẵn trong máy -->
@@ -668,6 +655,56 @@
             <button type="button" class="btn-start-custom-exam" id="btn-start-custom-exam" style="display: none;">
               <span>🚀 Vào Làm Bài Bộ Đề Này Ngay</span>
             </button>
+          </div>
+
+          <!-- Giao Diện Camera Toàn Màn Hình (Full-Screen Pro Camera Viewfinder: 0.5x Ultra-Wide, 1x, 2x, Macro) -->
+          <div class="exam-camera-panel" id="exam-camera-panel" style="display: none;" aria-hidden="true">
+            <!-- Thanh điều khiển phía trên Camera -->
+            <div class="camera-top-hud">
+              <button type="button" class="btn-cam-top-pill" id="btn-close-camera" title="Đóng Camera">
+                <span>✕ Đóng</span>
+              </button>
+              <div class="camera-active-lens-badge" id="camera-active-lens-badge">📷 Cam Chính 1x</div>
+              <button type="button" class="btn-cam-top-pill" id="btn-camera-torch" title="Bật / Tắt Đèn Flash">
+                <span>⚡ Đèn</span>
+              </button>
+            </div>
+
+            <!-- Danh sách chọn nhanh tất cả các ống kính vật lý trên máy (nếu máy có nhiều camera) -->
+            <div class="camera-hardware-devices-bar" id="camera-hardware-devices-bar" style="display: none;"></div>
+
+            <!-- Khung ngắm Video Toàn Màn Hình -->
+            <div class="camera-video-wrapper" id="camera-video-wrapper">
+              <video id="exam-camera-video" autoplay playsinline muted></video>
+              <div class="camera-scan-frame">
+                <span class="scan-corner tl"></span>
+                <span class="scan-corner tr"></span>
+                <span class="scan-corner bl"></span>
+                <span class="scan-corner br"></span>
+                <div class="camera-scan-laser"></div>
+              </div>
+              <div class="camera-focus-reticle" id="camera-focus-reticle"></div>
+              <div class="camera-shutter-flash" id="camera-shutter-flash"></div>
+              <div class="camera-hint-toast" id="camera-hint-toast">Chạm vào màn hình để lấy nét • Hỗ trợ Góc rộng 0.5x &amp; Macro</div>
+            </div>
+
+            <!-- Thanh điều khiển phía dưới: Chọn Ống Kính (0.5x, 1x, 2x, Macro) & Nút Chụp -->
+            <div class="camera-bottom-hud">
+              <div class="camera-lens-selector" id="camera-lens-selector">
+                <button type="button" class="cam-lens-btn" data-lens="ultrawide" title="Ống kính góc siêu rộng 0.5x">0.5x</button>
+                <button type="button" class="cam-lens-btn active" data-lens="wide" title="Ống kính chính 1x sắc nét">1x</button>
+                <button type="button" class="cam-lens-btn" data-lens="tele" title="Phóng to rõ chữ 2x">2x</button>
+                <button type="button" class="cam-lens-btn" data-lens="macro" title="Chế độ chụp cận cảnh chữ nhỏ Macro">🌷 Macro</button>
+              </div>
+
+              <div class="camera-controls-bar">
+                <button type="button" class="btn-cam-secondary" id="btn-open-native-cam-fallback" title="Mở ứng dụng Camera gốc của máy">📱 Cam Gốc</button>
+                <button type="button" class="btn-cam-snap" id="btn-snap-exam-photo" aria-label="Chụp Ảnh Đề">
+                  <span class="shutter-outer"><span class="shutter-inner">📸 Chụp Đề</span></span>
+                </button>
+                <button type="button" class="btn-cam-secondary" id="btn-switch-camera" title="Đổi sang ống kính / camera khác">🔄 Đổi Cam</button>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -837,11 +837,25 @@ class GameEngine {
     this.inputExamCamera = document.getElementById('input-exam-camera');
     this.examCameraPanel = document.getElementById('exam-camera-panel');
     this.examCameraVideo = document.getElementById('exam-camera-video');
+    this.cameraVideoWrapper = document.getElementById('camera-video-wrapper');
+    this.cameraLensSelector = document.getElementById('camera-lens-selector');
+    this.cameraHardwareDevicesBar = document.getElementById('camera-hardware-devices-bar');
+    this.cameraActiveLensBadge = document.getElementById('camera-active-lens-badge');
+    this.btnCameraTorch = document.getElementById('btn-camera-torch');
+    this.btnOpenNativeCamFallback = document.getElementById('btn-open-native-cam-fallback');
+    this.cameraFocusReticle = document.getElementById('camera-focus-reticle');
+    this.cameraShutterFlash = document.getElementById('camera-shutter-flash');
+    this.cameraHintToast = document.getElementById('camera-hint-toast');
     this.btnSwitchCamera = document.getElementById('btn-switch-camera');
     this.btnSnapExamPhoto = document.getElementById('btn-snap-exam-photo');
     this.btnCloseCamera = document.getElementById('btn-close-camera');
     this.cameraStream = null;
     this.cameraFacingMode = 'environment';
+    this.cameraDevices = [];
+    this.currentCameraDeviceId = null;
+    this.currentCameraLens = 'wide';
+    this.digitalCropZoom = 1.0;
+    this.cameraTorchOn = false;
     this.examDropzone = document.getElementById('exam-dropzone');
     this.inputExamFile = document.getElementById('input-exam-file');
     this.examSelectedFilePill = document.getElementById('exam-selected-file-pill');
@@ -2701,7 +2715,39 @@ ${emojiBlocks}
     if (this.inputExamCamera) {
       this.inputExamCamera.addEventListener('change', (e) => {
         const file = e.target && e.target.files ? e.target.files[0] : null;
-        if (file) this.handleExamFileSelected(file);
+        if (file) {
+          this.stopExamCamera();
+          this.handleExamFileSelected(file);
+        }
+      });
+    }
+    if (this.btnOpenNativeCamFallback) {
+      this.btnOpenNativeCamFallback.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        if (this.inputExamCamera && typeof this.inputExamCamera.click === 'function') {
+          this.inputExamCamera.click();
+        }
+      });
+    }
+    if (this.cameraLensSelector && this.cameraLensSelector.querySelectorAll) {
+      const lensBtns = this.cameraLensSelector.querySelectorAll('.cam-lens-btn');
+      lensBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.triggerHaptic('light');
+          const lens = (btn && typeof btn.getAttribute === 'function') ? btn.getAttribute('data-lens') : 'wide';
+          this.selectCameraLens(lens || 'wide');
+        });
+      });
+    }
+    if (this.btnCameraTorch) {
+      this.btnCameraTorch.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.toggleCameraTorch();
+      });
+    }
+    if (this.cameraVideoWrapper) {
+      this.cameraVideoWrapper.addEventListener('click', (e) => {
+        this.handleCameraTapToFocus(e);
       });
     }
     if (this.btnSwitchCamera) {
@@ -2840,23 +2886,49 @@ Answer: A`;
     }
   }
 
-  async openExamCamera() {
+  async openExamCamera(options = {}) {
+    const isSwitching = Boolean(options && options.isSwitching);
+    const requestedDeviceId = (options && options.deviceId) !== undefined ? options.deviceId : this.currentCameraDeviceId;
+    const requestedLens = (options && options.lens) || this.currentCameraLens || 'wide';
+    this.currentCameraLens = requestedLens;
+
     if (typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
       try {
-        this.stopExamCamera();
+        // Hiệu ứng mờ nhẹ (iOS lens blur transition) khi chuyển ống kính hoặc đổi camera
+        if (isSwitching && this.examCameraVideo && this.examCameraVideo.classList) {
+          this.examCameraVideo.classList.add('switching-lens');
+        }
+
+        this.stopCameraTracksOnly();
+
+        const videoConstraints = {
+          width: { ideal: 2560 },
+          height: { ideal: 1440 }
+        };
+
+        if (requestedDeviceId) {
+          videoConstraints.deviceId = { exact: requestedDeviceId };
+        } else {
+          videoConstraints.facingMode = { ideal: this.cameraFacingMode || 'environment' };
+        }
+
         let stream = null;
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: this.cameraFacingMode || 'environment' },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
-            },
+            video: videoConstraints,
             audio: false
           });
         } catch (firstErr) {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: this.cameraFacingMode || 'environment' } },
+              audio: false
+            });
+          } catch (secondErr) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          }
         }
+
         this.cameraStream = stream;
         if (this.examCameraVideo) {
           this.examCameraVideo.srcObject = stream;
@@ -2864,16 +2936,39 @@ Answer: A`;
             this.examCameraVideo.play().catch(() => {});
           }
         }
+
+        // Mở giao diện Full-Screen Camera với animation mượt mà
         if (this.examCameraPanel) {
           this.examCameraPanel.style.display = 'flex';
+          this.examCameraPanel.setAttribute('aria-hidden', 'false');
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+              if (this.examCameraPanel && this.examCameraPanel.classList) {
+                this.examCameraPanel.classList.add('active');
+              }
+            });
+          } else if (this.examCameraPanel.classList) {
+            this.examCameraPanel.classList.add('active');
+          }
         }
-        if (this.examImportStatus) {
-          this.examImportStatus.style.display = 'block';
-          this.examImportStatus.textContent = '📷 Hướng camera vào trang đề thi và bấm "📸 Chụp Ảnh Đề"';
+
+        // Liệt kê tất cả các camera vật lý trên máy (Cam chính, Cam góc rộng 0.5x, Cam Macro/Tele, Cam trước)
+        await this.discoverCameraDevices(stream);
+
+        // Áp dụng cấu hình ống kính (0.5x, 1x, 2x, Macro) & lấy nét liên tục
+        await this.applyLensConstraintsToTrack(this.currentCameraLens);
+
+        if (isSwitching && this.examCameraVideo && this.examCameraVideo.classList) {
+          setTimeout(() => {
+            if (this.examCameraVideo && this.examCameraVideo.classList) {
+              this.examCameraVideo.classList.remove('switching-lens');
+            }
+          }, 220);
         }
+
         return;
       } catch (camErr) {
-        // Fallback to native file input with capture="environment" if permission denied or unsupported
+        // Fallback sang camera gốc nếu trình duyệt chặn quyền WebRTC
       }
     }
     if (this.inputExamCamera && typeof this.inputExamCamera.click === 'function') {
@@ -2881,22 +2976,332 @@ Answer: A`;
     }
   }
 
-  async switchCameraFacingMode() {
-    this.cameraFacingMode = this.cameraFacingMode === 'environment' ? 'user' : 'environment';
-    await this.openExamCamera();
+  async discoverCameraDevices(stream) {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+      return;
+    }
+    try {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = allDevices.filter(d => d && d.kind === 'videoinput');
+      this.cameraDevices = videoInputs.map((d, idx) => {
+        const rawLabel = String(d.label || '').trim();
+        const lower = rawLabel.toLowerCase();
+        let shortName = `Cam ${idx + 1}`;
+        let lensKind = 'wide';
+        let isFront = /front|user|trước|facetime/i.test(lower);
+
+        if (/ultra\s*wide|0\.5|góc\s*rộng|wide-angle/i.test(lower)) {
+          shortName = '0.5x Góc rộng';
+          lensKind = 'ultrawide';
+        } else if (/macro|cận/i.test(lower)) {
+          shortName = '🌷 Macro';
+          lensKind = 'macro';
+        } else if (/tele|2x|3x|zoom/i.test(lower)) {
+          shortName = '2x Tele';
+          lensKind = 'tele';
+        } else if (/dual|triple|back|rear|environment|sau/i.test(lower)) {
+          shortName = isFront ? 'Cam Trước' : `Cam Sau ${idx + 1}`;
+          lensKind = 'wide';
+        } else if (isFront) {
+          shortName = 'Cam Trước';
+          lensKind = 'front';
+        } else if (rawLabel) {
+          shortName = rawLabel.length > 18 ? `${rawLabel.slice(0, 16)}…` : rawLabel;
+        }
+
+        return {
+          deviceId: d.deviceId,
+          label: rawLabel || `Camera ${idx + 1}`,
+          shortName,
+          lensKind,
+          isFront
+        };
+      });
+
+      const activeTrack = stream && typeof stream.getVideoTracks === 'function' ? stream.getVideoTracks()[0] : null;
+      const settings = activeTrack && typeof activeTrack.getSettings === 'function' ? activeTrack.getSettings() : {};
+      if (settings && settings.deviceId) {
+        this.currentCameraDeviceId = settings.deviceId;
+      }
+
+      this.renderHardwareCameraDevicesBar();
+    } catch (e) {}
   }
 
-  stopExamCamera() {
+  renderHardwareCameraDevicesBar() {
+    if (!this.cameraHardwareDevicesBar) return;
+    if (!Array.isArray(this.cameraDevices) || this.cameraDevices.length <= 1) {
+      this.cameraHardwareDevicesBar.style.display = 'none';
+      this.cameraHardwareDevicesBar.innerHTML = '';
+      return;
+    }
+
+    this.cameraHardwareDevicesBar.style.display = 'flex';
+    this.cameraHardwareDevicesBar.innerHTML = this.cameraDevices.map(dev => {
+      const isActive = dev.deviceId && dev.deviceId === this.currentCameraDeviceId;
+      return `<button type="button" class="cam-hw-pill${isActive ? ' active' : ''}" data-device-id="${dev.deviceId}">${dev.shortName}</button>`;
+    }).join('');
+
+    if (this.cameraHardwareDevicesBar.querySelectorAll) {
+      const pills = this.cameraHardwareDevicesBar.querySelectorAll('.cam-hw-pill');
+      pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+          this.triggerHaptic('light');
+          const devId = pill.getAttribute('data-device-id');
+          if (devId && devId !== this.currentCameraDeviceId) {
+            this.currentCameraDeviceId = devId;
+            const matched = this.cameraDevices.find(d => d.deviceId === devId);
+            if (matched) {
+              this.cameraFacingMode = matched.isFront ? 'user' : 'environment';
+              if (matched.lensKind && matched.lensKind !== 'front') {
+                this.currentCameraLens = matched.lensKind;
+              }
+            }
+            this.openExamCamera({ deviceId: devId, lens: this.currentCameraLens, isSwitching: true });
+          }
+        });
+      });
+    }
+  }
+
+  async selectCameraLens(lensMode = 'wide') {
+    this.currentCameraLens = lensMode;
+    this.updateCameraLensUI(lensMode);
+
+    // Kiểm tra xem trên máy có ống kính vật lý chuyên biệt cho chế độ này không (ví dụ ống kính Ultra-Wide 0.5x hoặc Macro/Tele)
+    if (Array.isArray(this.cameraDevices) && this.cameraDevices.length > 1) {
+      let targetDevice = null;
+      if (lensMode === 'ultrawide') {
+        targetDevice = this.cameraDevices.find(d => d.lensKind === 'ultrawide' && !d.isFront);
+      } else if (lensMode === 'macro') {
+        targetDevice = this.cameraDevices.find(d => (d.lensKind === 'macro' || d.lensKind === 'ultrawide') && !d.isFront);
+      } else if (lensMode === 'tele') {
+        targetDevice = this.cameraDevices.find(d => d.lensKind === 'tele' && !d.isFront);
+      } else if (lensMode === 'wide') {
+        targetDevice = this.cameraDevices.find(d => d.lensKind === 'wide' && !d.isFront);
+      }
+
+      if (targetDevice && targetDevice.deviceId && targetDevice.deviceId !== this.currentCameraDeviceId) {
+        this.currentCameraDeviceId = targetDevice.deviceId;
+        await this.openExamCamera({ deviceId: targetDevice.deviceId, lens: lensMode, isSwitching: true });
+        return;
+      }
+    }
+
+    // Hiệu ứng chuyển tiêu cự mượt mà trên ống kính hiện tại
+    if (this.examCameraVideo && this.examCameraVideo.classList) {
+      this.examCameraVideo.classList.add('switching-lens');
+      setTimeout(() => {
+        if (this.examCameraVideo && this.examCameraVideo.classList) {
+          this.examCameraVideo.classList.remove('switching-lens');
+        }
+      }, 190);
+    }
+
+    await this.applyLensConstraintsToTrack(lensMode);
+  }
+
+  async applyLensConstraintsToTrack(lensMode = 'wide') {
+    this.updateCameraLensUI(lensMode);
+    this.digitalCropZoom = 1.0;
+
+    const track = this.cameraStream && typeof this.cameraStream.getVideoTracks === 'function'
+      ? this.cameraStream.getVideoTracks()[0]
+      : null;
+    const capabilities = (track && typeof track.getCapabilities === 'function')
+      ? (track.getCapabilities() || {})
+      : {};
+
+    const advancedConstraints = {};
+    let appliedHardwareZoom = false;
+
+    // 1. Lấy nét liên tục hoặc lấy nét cận cảnh Macro
+    if (Array.isArray(capabilities.focusMode)) {
+      if (lensMode === 'macro' && capabilities.focusMode.includes('continuous')) {
+        advancedConstraints.focusMode = 'continuous';
+      } else if (capabilities.focusMode.includes('continuous')) {
+        advancedConstraints.focusMode = 'continuous';
+      }
+    }
+    if (lensMode === 'macro' && capabilities.focusDistance && typeof capabilities.focusDistance.min === 'number') {
+      const minFocus = capabilities.focusDistance.min;
+      const maxFocus = capabilities.focusDistance.max || 1;
+      advancedConstraints.focusDistance = Math.min(maxFocus, minFocus + 0.06);
+    }
+
+    // 2. Điều chỉnh tiêu cự Zoom phần cứng (nếu trình duyệt/camera hỗ trợ)
+    if (capabilities.zoom && typeof capabilities.zoom.min === 'number' && typeof capabilities.zoom.max === 'number') {
+      const zMin = capabilities.zoom.min;
+      const zMax = capabilities.zoom.max;
+      let desiredZoom = 1.0;
+      if (lensMode === 'ultrawide') {
+        desiredZoom = zMin < 1.0 ? zMin : 1.0;
+      } else if (lensMode === 'wide') {
+        desiredZoom = Math.min(zMax, Math.max(zMin, 1.0));
+      } else if (lensMode === 'tele') {
+        desiredZoom = Math.min(zMax, Math.max(zMin, 2.0));
+      } else if (lensMode === 'macro') {
+        desiredZoom = Math.min(zMax, Math.max(zMin, 1.6));
+      }
+      advancedConstraints.zoom = desiredZoom;
+      appliedHardwareZoom = true;
+    }
+
+    if (track && typeof track.applyConstraints === 'function' && Object.keys(advancedConstraints).length > 0) {
+      try {
+        await track.applyConstraints({ advanced: [advancedConstraints] });
+      } catch (e) {}
+    }
+
+    // 3. Nếu thiết bị không hỗ trợ zoom phần cứng trực tiếp qua WebRTC, áp dụng Optical-Grade Preview Scale & Crop
+    if (this.examCameraVideo && this.examCameraVideo.style) {
+      if (lensMode === 'ultrawide') {
+        this.digitalCropZoom = 1.0;
+        this.examCameraVideo.style.objectFit = 'contain';
+        this.examCameraVideo.style.transform = 'scale(1)';
+      } else if (lensMode === 'tele' && !appliedHardwareZoom) {
+        this.digitalCropZoom = 1.85;
+        this.examCameraVideo.style.objectFit = 'cover';
+        this.examCameraVideo.style.transform = 'scale(1.85)';
+      } else if (lensMode === 'macro' && !appliedHardwareZoom) {
+        this.digitalCropZoom = 1.45;
+        this.examCameraVideo.style.objectFit = 'cover';
+        this.examCameraVideo.style.transform = 'scale(1.45)';
+      } else {
+        this.digitalCropZoom = 1.0;
+        this.examCameraVideo.style.objectFit = 'cover';
+        this.examCameraVideo.style.transform = 'scale(1)';
+      }
+    }
+  }
+
+  updateCameraLensUI(lensMode = 'wide') {
+    const badgeLabels = {
+      ultrawide: '🌐 Góc Rộng 0.5x • Chụp cả trang đề',
+      wide: '📷 Cam Chính 1x • Sắc nét chuẩn',
+      tele: '🔍 Phóng To 2x • Rõ chữ ở xa',
+      macro: '🌷 Chế Độ Macro • Chụp sát chữ nhỏ'
+    };
+    if (this.cameraActiveLensBadge) {
+      this.cameraActiveLensBadge.textContent = badgeLabels[lensMode] || badgeLabels.wide;
+    }
+    if (this.cameraLensSelector && this.cameraLensSelector.querySelectorAll) {
+      const btns = this.cameraLensSelector.querySelectorAll('.cam-lens-btn');
+      btns.forEach(btn => {
+        if (btn && btn.classList && typeof btn.getAttribute === 'function') {
+          btn.classList.toggle('active', btn.getAttribute('data-lens') === lensMode);
+        }
+      });
+    }
+  }
+
+  async toggleCameraTorch() {
+    this.cameraTorchOn = !this.cameraTorchOn;
+    const track = this.cameraStream && typeof this.cameraStream.getVideoTracks === 'function'
+      ? this.cameraStream.getVideoTracks()[0]
+      : null;
+    let hardwareTorchApplied = false;
+    if (track && typeof track.getCapabilities === 'function' && typeof track.applyConstraints === 'function') {
+      const caps = track.getCapabilities() || {};
+      if (caps.torch) {
+        try {
+          await track.applyConstraints({ advanced: [{ torch: this.cameraTorchOn }] });
+          hardwareTorchApplied = true;
+        } catch (e) {}
+      }
+    }
+    if (this.btnCameraTorch && this.btnCameraTorch.classList) {
+      this.btnCameraTorch.classList.toggle('torch-on', this.cameraTorchOn);
+    }
+    if (this.cameraHintToast) {
+      this.cameraHintToast.textContent = this.cameraTorchOn
+        ? (hardwareTorchApplied ? '⚡ Đã bật đèn Flash hỗ trợ chụp đề rõ nét' : '💡 Đã bật tăng sáng khung ngắm')
+        : '⚡ Đã tắt đèn Flash';
+    }
+    if (this.examCameraVideo && this.examCameraVideo.classList) {
+      this.examCameraVideo.classList.toggle('video-bright-boost', this.cameraTorchOn && !hardwareTorchApplied);
+    }
+  }
+
+  handleCameraTapToFocus(e) {
+    if (!this.cameraVideoWrapper || !this.cameraFocusReticle) return;
+    const rect = this.cameraVideoWrapper.getBoundingClientRect
+      ? this.cameraVideoWrapper.getBoundingClientRect()
+      : { left: 0, top: 0, width: 360, height: 640 };
+    const clientX = (e && typeof e.clientX === 'number') ? e.clientX : rect.left + rect.width / 2;
+    const clientY = (e && typeof e.clientY === 'number') ? e.clientY : rect.top + rect.height / 2;
+    const x = Math.max(36, Math.min(rect.width - 36, clientX - rect.left));
+    const y = Math.max(36, Math.min(rect.height - 36, clientY - rect.top));
+
+    this.triggerHaptic('light');
+    this.cameraFocusReticle.style.left = `${x}px`;
+    this.cameraFocusReticle.style.top = `${y}px`;
+    this.cameraFocusReticle.classList.remove('focus-anim');
+    if (this.cameraFocusReticle.offsetWidth !== undefined) {
+      void this.cameraFocusReticle.offsetWidth;
+    }
+    this.cameraFocusReticle.classList.add('focus-anim');
+
+    // Kích hoạt lấy nét lại trên ống kính
+    const track = this.cameraStream && typeof this.cameraStream.getVideoTracks === 'function'
+      ? this.cameraStream.getVideoTracks()[0]
+      : null;
+    if (track && typeof track.applyConstraints === 'function') {
+      try {
+        track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      } catch (err) {}
+    }
+  }
+
+  async switchCameraFacingMode() {
+    if (Array.isArray(this.cameraDevices) && this.cameraDevices.length > 1) {
+      const currentIdx = this.cameraDevices.findIndex(d => d.deviceId === this.currentCameraDeviceId);
+      const nextIdx = (currentIdx + 1) % this.cameraDevices.length;
+      const nextDev = this.cameraDevices[nextIdx];
+      if (nextDev && nextDev.deviceId) {
+        this.currentCameraDeviceId = nextDev.deviceId;
+        this.cameraFacingMode = nextDev.isFront ? 'user' : 'environment';
+        if (nextDev.lensKind && nextDev.lensKind !== 'front') {
+          this.currentCameraLens = nextDev.lensKind;
+        }
+        await this.openExamCamera({ deviceId: nextDev.deviceId, lens: this.currentCameraLens, isSwitching: true });
+        return;
+      }
+    }
+    this.currentCameraDeviceId = null;
+    this.cameraFacingMode = this.cameraFacingMode === 'environment' ? 'user' : 'environment';
+    await this.openExamCamera({ isSwitching: true });
+  }
+
+  stopCameraTracksOnly() {
     if (this.cameraStream && typeof this.cameraStream.getTracks === 'function') {
       this.cameraStream.getTracks().forEach(track => {
         if (track && typeof track.stop === 'function') track.stop();
       });
     }
     this.cameraStream = null;
+    this.cameraTorchOn = false;
+    if (this.btnCameraTorch && this.btnCameraTorch.classList) {
+      this.btnCameraTorch.classList.remove('torch-on');
+    }
+  }
+
+  stopExamCamera() {
+    this.stopCameraTracksOnly();
     if (this.examCameraVideo) {
       this.examCameraVideo.srcObject = null;
+      if (this.examCameraVideo.style) {
+        this.examCameraVideo.style.transform = 'scale(1)';
+      }
+      if (this.examCameraVideo.classList) {
+        this.examCameraVideo.classList.remove('switching-lens', 'video-bright-boost');
+      }
     }
     if (this.examCameraPanel) {
+      if (this.examCameraPanel.classList) {
+        this.examCameraPanel.classList.remove('active');
+      }
+      this.examCameraPanel.setAttribute('aria-hidden', 'true');
       this.examCameraPanel.style.display = 'none';
     }
   }
@@ -2904,14 +3309,21 @@ Answer: A`;
   snapExamPhoto() {
     if (!this.examCameraVideo) return;
     const video = this.examCameraVideo;
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 720;
+    const rawW = video.videoWidth || 1920;
+    const rawH = video.videoHeight || 1080;
+    const cropFactor = Math.max(1.0, this.digitalCropZoom || 1.0);
+
+    const srcW = Math.round(rawW / cropFactor);
+    const srcH = Math.round(rawH / cropFactor);
+    const srcX = Math.round((rawW - srcW) / 2);
+    const srcY = Math.round((rawH - srcH) / 2);
+
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = rawW;
+    canvas.height = rawH;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.drawImage(video, 0, 0, width, height);
+      ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, rawW, rawH);
     }
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     const commaIdx = dataUrl.indexOf(',');
@@ -2927,7 +3339,10 @@ Answer: A`;
       precomputedBase64: base64Str
     };
 
-    this.stopExamCamera();
+    // Hiệu ứng chớp màn trập (Shutter Flash) mượt mà trước khi đóng Camera
+    if (this.cameraShutterFlash && this.cameraShutterFlash.classList) {
+      this.cameraShutterFlash.classList.add('flash-active');
+    }
     soundEngine.playCorrect(1);
 
     if (this.examSelectedFilePill) {
@@ -2939,8 +3354,15 @@ Answer: A`;
     }
     if (this.examImportStatus) {
       this.examImportStatus.style.display = 'block';
-      this.examImportStatus.textContent = '📸 Đã chụp ảnh đề thi! Bấm nút "✨ Chuyển Thành Câu Hỏi..." bên dưới ngay.';
+      this.examImportStatus.textContent = '📸 Đã chụp ảnh đề thi sắc nét! Bấm nút "✨ Tạo Câu Hỏi Trắc Nghiệm Ngay" bên dưới.';
     }
+
+    setTimeout(() => {
+      if (this.cameraShutterFlash && this.cameraShutterFlash.classList) {
+        this.cameraShutterFlash.classList.remove('flash-active');
+      }
+    }, 160);
+    this.stopExamCamera();
   }
 
   handleExamFileSelected(file) {
