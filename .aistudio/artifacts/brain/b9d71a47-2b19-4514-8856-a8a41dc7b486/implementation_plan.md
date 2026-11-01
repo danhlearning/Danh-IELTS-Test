@@ -1,75 +1,54 @@
-# Kế Hoạch Tối Ưu Hóa Khung Hiển Thị Câu Hỏi & Bố Cục Ảnh Tràn Viền
+# Kế Hoạch Phát Triển: Luyện Phát Âm Giọng Nói (Voice Check) & Nhiệm Vụ Ngày (Daily Streak)
 
-Bản kế hoạch này tập trung tái thiết kế toàn diện **Khu vực Câu hỏi trung tâm (Question Arena)** nhằm tối đa hóa diện tích hiển thị, phóng lớn cỡ chữ câu hỏi chính để người học nhìn rõ ngay lập tức, đồng thời áp dụng bố cục **Ảnh tràn ngang sát viền trên thẻ (Full-Bleed Top Hero)** cho các câu hỏi có hình ảnh minh họa.
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> Hệ thống sẽ thực thi thay đổi giao diện ngay sau khi bạn nhấn nút **Proceed (Tiếp tục / Phê duyệt)** trên bản kế hoạch này.
-
-- **Quyết định 1 — Bố cục câu hỏi có hình ảnh minh họa**: Áp dụng thiết kế **Ảnh tràn ngang sát viền trên thẻ, chữ nằm gọn phía dưới** — hình ảnh minh họa mở rộng toàn bộ chiều ngang khung thẻ câu hỏi (`100% width`), bo tròn khớp sát mép trên của thẻ, phần chữ câu hỏi và ô điền ký tự nằm gọn gàng trong vùng đệm bên dưới.
-- **Quyết định 2 — Tinh gọn tối đa thành phần phụ để nhường chỗ cho câu hỏi chính**: **Tự động ẩn các dải tag phụ ở đầu thẻ, chân thẻ và câu dẫn thừa** để dành trọn diện tích dọc và ngang cho hình ảnh minh họa cùng nội dung câu hỏi chính.
-- **Quyết định 3 — Phóng lớn tỷ lệ chữ câu hỏi & ô từ vựng**: Nâng cấp toàn bộ thang chữ hiển thị câu hỏi chính và ô điền từ khuyết để chữ to, sắc nét, dễ đọc lướt nhanh trong thời gian đếm ngược 15 giây mà vẫn đảm bảo nguyên tắc không cuộn dọc (`Zero-scroll 100dvh`).
+Kế hoạch nâng cấp tập trung vào **2 tính năng trọng tâm** bạn đã chọn, tuân thủ nghiêm ngặt triết lý thiết kế **gọn trên 1 màn hình di động/máy tính bảng**, **chừa khoảng hở lề dưới thoải mái cho ngón cái**, ít chữ dễ đọc và **phản hồi hình ảnh – âm thanh – rung Haptic kích thích**.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Mini-Game Luyện Phát Âm Chấm Điểm Qua Giọng Nói (`🎙️ Voice Check`)
 
-- **Mục tiêu cốt lõi**: Giải phóng không gian bị chiếm dụng bởi các nhãn thông tin phụ (cấp lớp, nhãn chuyên đề, ghi chú chân thẻ, câu dẫn lặp lại) và khoảng trống lề ngoài, chuyển toàn bộ diện tích đó cho **Nội dung câu hỏi chính** và **Khung ảnh minh họa**.
-- **Hai trạng thái hiển thị thông minh**:
-  1. **Câu hỏi纯 văn bản / Điền từ (Text-Only Focus Mode)**: Thẻ câu hỏi mở rộng toàn khung, căn giữa câu hỏi chính với cỡ chữ lớn vượt trội (`1.1rem – 1.7rem` tùy độ dài câu) và dải ô ký tự rõ nét.
-  2. **Câu hỏi có hình ảnh minh họa (Full-Bleed Image + Text Mode)**: Ảnh minh họa tràn sát 3 cạnh trên-trái-phải của thẻ câu hỏi với chiều cao lớn, sắc nét; phần câu hỏi và ô điền từ được bố trí cân đối ngay phía dưới ảnh.
+Tích hợp trực tiếp vào menu **Kho Trò Chơi (`🧩`)** trên thanh điều hướng cùng với *Sắp xếp câu* và *Luyện nghe*.
+
+### Trải nghiệm & Giao diện (1 màn hình gọn gàng)
+- **Thẻ Từ & Câu Ngắn Gọn**: Hiển thị nổi bật Từ mục tiêu, phiên âm chuẩn IPA, nghĩa ngắn gọn và 1 câu ví dụ ngắn (tối đa 6–8 từ) để người học đọc từ đơn hoặc đọc cả cụm từ mà không bị rối mắt.
+- **Nút Nghe Mẫu & Nút Thu Âm Ngón Cái**:
+  - Nút **🔊 Nghe mẫu** phát giọng đọc chuẩn để người học bắt chước ngữ điệu.
+  - Cụm nút **🎙️ Chạm để nói** đặt ở vùng ngón cái (cách cạnh đáy màn hình một khoảng hở an toàn), kèm vòng sóng âm (Voice Wave Pulse) chuyển động mượt theo nhịp thu âm.
+- **Chấm Điểm Trực Quan & Phản Hồi Tức Thì**:
+  - Sử dụng `Web Speech API` (`SpeechRecognition` / `webkitSpeechRecognition`) kết hợp bộ chấm điểm độ khớp âm tiết để trả về **Điểm phát âm (0% – 100%)** ngay sau khi nói.
+  - Tô màu xanh các từ phát âm chuẩn và gạch chân vàng từ cần đọc rõ hơn.
+  - Kích hoạt **âm thanh chiến thắng + rung Haptic + hiệu ứng pháo sáng** khi đạt từ 80% trở lên, hoặc cho phép bấm **"🎙️ Thử lại"** ngay lập tức nếu muốn cải thiện điểm số.
 
 ---
 
-## 2. User Experience & Visual Design
+## 2. Hệ Thống Nhiệm Vụ Hàng Ngày & Chuỗi Ngày Học (`🔥 Daily Quests & Streak`)
 
-### Sơ Đồ Bố Cục Khung Câu Hỏi Mới (Visual Layout Architecture)
+Tạo động lực quay lại học mỗi ngày với phản hồi phần thưởng giàu cảm xúc mà không làm chật khung hình chính.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│             TRẠNG THÁI 1: CÂU HỎI CÓ HÌNH ẢNH (FULL-BLEED)              │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                                                                   │  │
-│  │           [ ẢNH MINH HỌA TRÀN NGANG SÁT VIỀN TRÊN THẺ ]           │  │
-│  │             (100% Chiều Ngang Khung • Hiển Thị Rõ Nét)            │  │
-│  │                                                                   │  │
-│  ├───────────────────────────────────────────────────────────────────┤  │
-│  │                     [ C _ M M _ N I T Y ] (🔊)                    │  │
-│  │                                                                   │  │
-│  │       "The local ________ came together to clean the beach."      │  │
-│  │            (Chữ câu hỏi kích thước lớn, tương phản cao)           │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
+### Trải nghiệm & Giao diện
+- **Nút Chuỗi Ngày Học (`🔥 Streak`) Trên Header**:
+  - Hiển thị số ngày học liên tiếp kèm chấm thông báo khi có nhiệm vụ hoàn thành chờ nhận thưởng.
+  - Khi bấm vào sẽ mở **Popup Nhiệm Vụ & Chuỗi Ngày Học** với chiều cao thoáng, hiệu ứng trượt mượt mà và nút đóng/nhận thưởng đặt cao vừa tầm ngón cái.
+- **Lịch Chuỗi 7 Ngày & 3 Nhiệm Vụ Tự Động Làm Mới Mỗi Ngày**:
+  - **Thanh Chuỗi 7 Ngày (T2 – CN)**: Hiển thị trực quan các ngày đã giữ lửa học tập trong tuần.
+  - **3 Nhiệm vụ ngắn gọn trong ngày**:
+    1. 🎯 *Khởi động nhạy bén*: Trả lời đúng 5 câu hỏi bất kỳ.
+    2. 🧩 *Chinh phục Kho Trò Chơi*: Hoàn thành 3 lượt *Luyện phát âm*, *Sắp xếp câu* hoặc *Luyện nghe*.
+    3. ⚡ *Bậc thầy phản xạ*: Đạt chuỗi Combo 3x trở lên trong ngày.
+- **Hiệu Ứng Nhận Thưởng Kích Thích**:
+  - Mỗi nhiệm vụ hoàn thành sẽ sáng nút **"🎁 Nhận thưởng (+XP)"**.
+  - Khi bấm nhận thưởng, hệ thống phát **âm thanh nổ xu sảng khoái + rung Haptic đa tầng + mưa hạt sáng**, đồng thời cộng trực tiếp điểm thưởng vào tổng điểm của người chơi và lưu bền vững trên máy (`localStorage`).
 
-┌─────────────────────────────────────────────────────────────────────────┐
-│            TRẠNG THÁI 2: CÂU HỎI VĂN BẢN (MAXIMIZED TEXT)               │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                                                                   │  │
-│  │                                                                   │  │
-│  │      "She has a strong ________ in environmental protection       │  │
-│  │             and sustainable urban development." (🔊)              │  │
-│  │                                                                   │  │
-│  │         (Toàn bộ chiều cao thẻ dành trọn cho câu hỏi lớn)         │  │
-│  │                                                                   │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+---
 
-### Tinh Chỉnh Chi Tiết Giao Diện & Tỷ Lệ Hiển Thị
+## 3. Các Hạng Mục Triển Khai Kỹ Thuật
 
-1. **Mở rộng diện tích Khung Câu Hỏi (Question Section)**:
-   - Giảm khoảng cách lề trên và lề dưới bên ngoài khung câu hỏi để thẻ câu hỏi vươn rộng tối đa giữa thanh Header và cụm nút Đáp án.
-   - Tăng tỷ lệ co giãn linh hoạt (`flex-grow`) giúp khung câu hỏi tận dụng toàn bộ không gian trống trên màn hình.
-2. **Bố cục Ảnh Tràn Viền Trên (Edge-to-Edge Top Image)**:
-   - Khi câu hỏi có hình ảnh minh họa, khung ảnh tự động bung rộng `100%` chiều ngang của thẻ câu hỏi, áp sát viền trên và hai viền bên (không còn bị bó hẹp trong khung nhỏ ở giữa như trước).
-   - Chiều cao vùng ảnh đạt tỷ lệ vàng (`~52% – 58%` diện tích thẻ câu hỏi), sử dụng chế độ hiển thị sắc nét kết hợp lớp chuyển sắc viền dưới tinh tế để tách biệt mượt mà với phần chữ.
-3. **Phóng lớn Cỡ Chữ Câu Hỏi Chính & Ô Điền Ký Tự**:
-   - Tăng kích thước chữ câu hỏi trên cả 4 cấp độ độ dài:
-     - Câu ngắn (`XL`): Tăng từ cỡ nhỏ lên **1.35rem – 1.72rem**, độ đậm cao, dễ đọc ngay từ cái nhìn đầu tiên.
-     - Câu vừa (`MD`): Tăng lên **1.18rem – 1.48rem**.
-     - Câu dài (`SM` & `XS`): Tăng lên **1.02rem – 1.28rem** với khoảng cách dòng thoáng đãng.
-   - Các ô điền ký tự từ vựng (`Letter Boxes`) được phóng lớn kích thước ô và chữ bên trong để tương xứng với câu hỏi.
-4. **Tự động ẩn gọn Tag phụ & Câu dẫn thừa**:
-   - Ẩn dải huy hiệu đầu thẻ (Khối lớp, Band điểm, Cấp độ Mastery, Chế độ, Chủ đề), nhãn gợi ý chân thẻ và dòng câu dẫn phụ lặp lại để mắt người học tập trung 100% vào hình ảnh và câu hỏi chính.
-   - Giữ nguyên cấu trúc dữ liệu ngầm để hệ thống chấm điểm, phát âm và thuật toán lặp lại ngắt quãng (SRS) hoạt động liền mạch.
+1. **Cập nhật `index.html`**:
+   - Thêm mục **🎙️ Luyện phát âm** vào menu thả xuống `#mini-games-dropdown-menu` (`🧩`).
+   - Thêm nút huy hiệu **🔥 Streak & Nhiệm vụ ngày** trên thanh công cụ và cấu trúc `#daily-quest-modal-overlay` tối ưu cho thao tác ngón cái.
+2. **Cập nhật `style.css`**:
+   - Thiết kế giao diện thẻ thu âm giọng nói, vòng sóng âm động (`@keyframes voicePulse`), thước đo điểm số phát âm % và giao diện thẻ nhiệm vụ ngày gọn thoáng, đảm bảo khoảng cách an toàn với mép dưới màn hình.
+3. **Cập nhật `app.js`**:
+   - Xây dựng chế độ chơi `voice_check`: tích hợp `SpeechRecognition`, thuật toán chấm điểm phát âm theo từ, hiển thị từng từ đúng/sai và hỗ trợ chế độ mô phỏng thông minh nếu trình duyệt thiết bị tắt quyền mic.
+   - Xây dựng bộ quản lý `DailyStreakManager`: theo dõi chuỗi ngày học liên tiếp, tự động cập nhật tiến độ 3 nhiệm vụ ngày khi người chơi trả lời đúng / đạt combo / chơi mini-game, cùng hiệu ứng âm thanh & Haptic khi nhận thưởng.
+4. **Kiểm thử tự động (`test_adaptive_learning.js`)**:
+   - Bổ sung bộ kiểm thử cho chế độ **Luyện phát âm (`voice_check`)** và **Hệ thống Nhiệm vụ ngày & Streak**.

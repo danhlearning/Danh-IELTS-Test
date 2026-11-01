@@ -68,7 +68,7 @@
         <!-- ==================== TẦNG 1: MONITORING ZONE (QUAN SÁT THỤ ĐỘNG) ==================== -->
         <section class="zone-header">
           <div class="stats-row">
-            <!-- Cánh Trái (Left Wing): Viên nang 3 Trái tim sinh mệnh đối xứng -->
+            <!-- Cánh Trái (Left Wing): Viên nang 3 Trái tim sinh mệnh & Nút Chuỗi Ngày Học / Nhiệm Vụ Ngày -->
             <div class="header-wing-left">
               <div class="hearts-pill-capsule" title="Sinh mệnh còn lại (Hồi phục sau 4 combo)">
                 <div class="hearts-container" id="hearts-container">
@@ -83,6 +83,13 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Huy hiệu Chuỗi Ngày Học & Nhiệm Vụ Ngày (Bấm để mở bảng Nhiệm vụ & nhận thưởng XP) -->
+              <button type="button" class="streak-quest-header-btn" id="btn-daily-streak-header" title="Nhiệm vụ hàng ngày & Chuỗi ngày học">
+                <span class="sq-fire-icon">🔥</span>
+                <span class="sq-streak-num" id="header-streak-days">1</span>
+                <span class="sq-quest-dot" id="header-quest-notify-dot" style="display: none;"></span>
+              </button>
             </div>
 
             <!-- Streak Combo Badge Rực Lửa Holographic (Bảo toàn DOM ID cho test suite, ẩn bằng CSS) -->
@@ -98,12 +105,38 @@
                   <span class="g-icon">🎓</span>
                   <span id="current-filter-pill-label">Adaptive</span>
                 </button>
+
+                <!-- Ô Chọn Game: Gom Sắp xếp câu, Luyện nghe & Luyện phát âm vào 1 mục biểu tượng 🧩 -->
+                <div class="mini-games-menu-wrapper" id="mini-games-menu-wrapper">
+                  <button type="button" class="icon-btn mini-games-trigger-btn" id="btn-mini-games-toggle" title="Kho Trò Chơi: Sắp xếp câu, Luyện nghe & Luyện phát âm" aria-expanded="false">
+                    <span class="g-icon mini-game-puzzle-icon">🧩</span>
+                  </button>
+
+                  <div class="mini-games-dropdown-menu" id="mini-games-dropdown-menu" aria-hidden="true">
+                    <div class="mini-games-menu-header">🎮 KHO TRÒ CHƠI</div>
+                    <button type="button" class="settings-menu-item mini-game-item" id="btn-sentence-order-mode" title="Game Sắp Xếp Từ Thành Câu (30 giây)">
+                      <span class="settings-item-icon">🧩</span>
+                      <span class="settings-item-text">Sắp xếp câu</span>
+                      <span class="settings-item-badge" id="badge-game-sentence-order">30s</span>
+                    </button>
+
+                    <button type="button" class="settings-menu-item mini-game-item" id="btn-audio-quiz-mode" title="Game Luyện Nghe Phát Âm (Audio Quiz)">
+                      <span class="settings-item-icon">🎧</span>
+                      <span class="settings-item-text">Luyện nghe</span>
+                      <span class="settings-item-badge" id="badge-game-audio-quiz">Nghe AI</span>
+                    </button>
+
+                    <button type="button" class="settings-menu-item mini-game-item" id="btn-voice-check-mode" title="Game Luyện Phát Âm Chấm Điểm Qua Giọng Nói (Voice Check)">
+                      <span class="settings-item-icon">🎙️</span>
+                      <span class="settings-item-text">Luyện phát âm</span>
+                      <span class="settings-item-badge" id="badge-game-voice-check">Chấm giọng</span>
+                    </button>
+                  </div>
+                </div>
+
                 <button class="grade-filter-pill-btn exam-import-pill-btn" id="btn-exam-import" title="Tạo câu hỏi từ đề thi">
                   <span class="g-icon">📄</span>
                   <span class="exam-import-pill-text">Tạo câu hỏi từ đề thi</span>
-                </button>
-                <button class="icon-btn" id="btn-audio-quiz-mode" title="Bật/Tắt Chế độ Nghe Phát Âm (Audio Quiz)">
-                  <svg class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
                 </button>
 
                 <!-- Ô Setting gom Âm thanh, Chế độ Tối/Sáng & Hồ sơ cá nhân (Bấm vào mới hiện animation) -->
@@ -122,6 +155,14 @@
                       </span>
                       <span class="settings-item-text">Âm thanh</span>
                       <span class="settings-item-badge" id="settings-sound-badge">Bật</span>
+                    </button>
+
+                    <button type="button" class="settings-menu-item" id="btn-haptic-toggle" title="Bật/Tắt Phản hồi rung (Haptic Feedback)">
+                      <span class="settings-item-icon">
+                        <svg id="haptic-icon-svg" class="action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><line x1="12" y1="17" x2="12.01" y2="17"/><path d="M2 8v8"/><path d="M22 8v8"/></svg>
+                      </span>
+                      <span class="settings-item-text">Phản hồi rung</span>
+                      <span class="settings-item-badge" id="settings-haptic-badge">Bật 📳</span>
                     </button>
 
                     <button type="button" class="settings-menu-item" id="btn-theme-toggle" title="Chuyển chế độ Sáng/Tối">
@@ -200,8 +241,20 @@
               <!-- Dynamic Letter Boxes -->
             </div>
 
-            <!-- Bảng Điều Khiển Sóng Âm Chế Độ Nghe Phát Âm (Audio Listening Quiz) -->
+            <!-- Bảng Điều Khiển Sóng Âm Chế Độ Nghe Phát Âm (Audio Listening Quiz + Phân Loại Theo Lớp) -->
             <div class="audio-quiz-panel" id="audio-quiz-panel" style="display: none;">
+              <div class="audio-grade-filter-bar" id="audio-grade-filter-bar" role="tablist" aria-label="Phân loại luyện nghe theo lớp">
+                <button type="button" class="audio-grade-chip active" data-audio-grade="all">Tất cả</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g6">Lớp 6</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g7">Lớp 7</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g8">Lớp 8</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g9">Lớp 9</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g10">Lớp 10</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g11">Lớp 11</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="g12">Lớp 12</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="toeic">TOEIC</button>
+                <button type="button" class="audio-grade-chip" data-audio-grade="band7">IELTS 7+</button>
+              </div>
               <div class="audio-wave-bars" id="audio-wave-bars">
                 <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
               </div>
@@ -371,12 +424,28 @@
                 <span class="g-badge">761 câu</span>
               </button>
 
+              <button class="grade-option-btn" data-filter="sentence_order">
+                <div class="g-info">
+                  <span class="g-title">🧩 Game Sắp Xếp Từ Thành Câu (Sentence Builder)</span>
+                  <span class="g-desc">Chạm các mảnh từ vựng xáo trộn để ghép thành câu tiếng Anh hoàn chỉnh chuẩn ngữ pháp</span>
+                </div>
+                <span class="g-badge">Mới 🔥</span>
+              </button>
+
               <button class="grade-option-btn" data-filter="audio">
                 <div class="g-info">
                   <span class="g-title">🎧 Luyện Nghe Phát Âm (Audio Listening Quiz)</span>
                   <span class="g-desc">Nghe giọng đọc chuẩn & chậm 0.7x để đoán nghĩa tiếng Việt hoặc nhận diện từ</span>
                 </div>
                 <span class="g-badge">Audio AI</span>
+              </button>
+
+              <button class="grade-option-btn" data-filter="voice_check">
+                <div class="g-info">
+                  <span class="g-title">🎙️ Luyện Phát Âm Chấm Điểm Giọng Nói (Voice Check)</span>
+                  <span class="g-desc">Đọc to từ vựng & cụm câu ngắn qua Mic để AI chấm độ chuẩn phát âm % trực tiếp</span>
+                </div>
+                <span class="g-badge">Mới 🎙️</span>
               </button>
 
               <button class="grade-option-btn" data-filter="weak">
@@ -390,7 +459,7 @@
               <button class="grade-option-btn" data-filter="custom_exam">
                 <div class="g-info">
                   <span class="g-title">📄 Tạo câu hỏi từ đề thi</span>
-                  <span class="g-desc">Chụp ảnh đề thi, tải file PDF / Word hoặc dán chữ để tạo câu hỏi</span>
+                  <span class="g-desc">Bê nguyên câu trong đề thành game • AI tự chọn đáp án đúng &amp; giải thích ngắn gọn</span>
                 </div>
                 <span class="g-badge" id="custom-exam-count-badge">Tải đề</span>
               </button>
@@ -628,7 +697,7 @@
             </div>
 
             <!-- Bước 1: Chọn cách nhập đề thi (Chụp ảnh / Chọn file / Dán chữ) -->
-            <div class="exam-step-guide">Bước 1: Chọn 1 trong 3 cách đưa đề thi vào</div>
+            <div class="exam-step-guide">Bước 1: Đưa đề vào (AI bê nguyên câu trong đề, chọn đáp án đúng &amp; giải thích ngắn gọn)</div>
 
             <!-- Cách 1: Mở Trực Tiếp Camera Gốc Chụp Đề (Hỗ trợ chụp nhiều ảnh & lưu Local) -->
             <div class="exam-capture-actions-row">
@@ -674,11 +743,11 @@
               <textarea id="exam-raw-text-input" class="exam-raw-textarea" rows="2" placeholder="Dán câu hỏi tiếng Anh vào đây (hoặc bấm nút Dùng Đề Mẫu bên trên)..."></textarea>
             </div>
 
-            <!-- Bước 2: Nút bấm Tạo Câu Hỏi Bằng AI -->
-            <div class="exam-step-guide">Bước 2: Bấm nút bên dưới để bắt đầu làm bài</div>
+            <!-- Bước 2: Nút bấm Tạo Câu Hỏi Bằng AI (Tạo trước 5 câu làm ngay + Tạo ngầm tối đa 60 câu) -->
+            <div class="exam-step-guide">Bước 2: Tạo nhanh 5 câu đầu để làm ngay • Tự động tạo tiếp tối đa 60 câu</div>
 
-            <button type="button" class="btn-convert-exam-ai" id="btn-run-exam-convert">
-              <span>✨ Tạo Câu Hỏi Trắc Nghiệm Ngay</span>
+            <button type="button" class="btn-convert-exam-ai btn-create-questions-xl" id="btn-run-exam-convert">
+              <span>Tạo Câu Hỏi</span>
             </button>
 
             <!-- Trạng thái xử lý AI -->
@@ -745,6 +814,47 @@
                 <button type="button" class="btn-cam-secondary" id="btn-switch-camera" title="Đổi sang ống kính / camera khác">🔄 Đổi Cam</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Modal Nhiệm Vụ Hàng Ngày & Chuỗi Ngày Học (Daily Quests & Streak Arena) -->
+        <div class="grade-modal-overlay" id="daily-quest-modal-overlay">
+          <div class="grade-modal-sheet daily-quest-modal-sheet">
+            <div class="sheet-handle"></div>
+            <div class="grade-modal-header">
+              <h3>🔥 Chuỗi Ngày Học &amp; Nhiệm Vụ Ngày</h3>
+              <button class="modal-close-icon-btn" id="btn-daily-quest-close" aria-label="Đóng">✕</button>
+            </div>
+
+            <!-- Thẻ Lửa Chuỗi Ngày Học & Lịch 7 Ngày Trong Tuần -->
+            <div class="streak-hero-banner" id="streak-hero-banner">
+              <div class="streak-hero-top">
+                <div class="streak-flame-badge">🔥</div>
+                <div class="streak-hero-info">
+                  <div class="streak-hero-count" id="quest-modal-streak-title">Chuỗi 1 ngày liên tiếp</div>
+                  <div class="streak-hero-sub" id="quest-modal-streak-sub">Hoàn thành nhiệm vụ mỗi ngày để giữ lửa &amp; nhận thưởng XP!</div>
+                </div>
+              </div>
+              <div class="streak-week-strip" id="streak-week-strip">
+                <!-- Dynamic 7 days strip (T2 - CN) -->
+              </div>
+            </div>
+
+            <!-- Tóm tắt tiến độ nhiệm vụ trong ngày -->
+            <div class="quest-section-header">
+              <span class="quest-section-title">🎯 Nhiệm vụ hôm nay</span>
+              <span class="quest-section-counter" id="quest-completed-counter">0/3 hoàn thành</span>
+            </div>
+
+            <!-- Danh sách 3 Nhiệm Vụ Hàng Ngày -->
+            <div class="daily-quests-list" id="daily-quests-list">
+              <!-- Dynamic quest cards -->
+            </div>
+
+            <!-- Nút Tiếp Tục Học Tập đặt cao vừa tầm ngón cái -->
+            <button type="button" class="btn-quest-continue" id="btn-quest-continue">
+              <span>⚡ Tiếp Tục Chinh Phục Ngay</span>
+            </button>
           </div>
         </div>
 

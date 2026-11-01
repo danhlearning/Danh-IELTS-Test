@@ -1,6 +1,6 @@
 {
-  "summary":  "Kế hoạch tái cấu trúc khu vực hiển thị câu hỏi (Question Section) với diện tích tối đa, chữ câu hỏi kích thước lớn rõ nét, bố cục ảnh minh họa tràn ngang sát viền trên thẻ (Full-Bleed Top Image) và tự động ẩn gọn các tag phụ/câu dẫn thừa để tối ưu không gian nhìn cho người học.",
-  "updatedAt":  "2026-10-30T15:23:06.040420288Z",
+  "summary":  "Kế hoạch phát triển Mini-Game Luyện Phát Âm Chấm Điểm Qua Giọng Nói (Voice Check) trong Kho Trò Chơi và Hệ Thống Nhiệm Vụ Hàng Ngày kèm Chuỗi Ngày Học (Daily Quests & Streak), tối ưu hiển thị 1 màn hình trên điện thoại/máy tính bảng với hiệu ứng âm thanh và rung Haptic sống động.",
+  "updatedAt":  "2026-10-31T16:11:18.292174587Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

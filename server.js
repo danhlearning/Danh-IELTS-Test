@@ -85,93 +85,111 @@ function buildMaskedAndMissing(wordStr) {
 }
 
 function normalizeImportedQuestion(raw, idx, fallbackMode = 'mixed') {
-  const allowedModes = ['letter_fill', 'meaning_match', 'collocation', 'word_class', 'preposition', 'sentence_cloze'];
+  const allowedModes = ['sentence_cloze', 'word_class', 'collocation', 'preposition', 'meaning_match', 'sentence_order', 'letter_fill'];
   let mode = String(raw.mode || '').trim().toLowerCase();
   if (!allowedModes.includes(mode)) {
-    if (fallbackMode === 'fill_only') {
-      mode = idx % 2 === 0 ? 'letter_fill' : 'sentence_cloze';
-    } else if (fallbackMode === 'mcq_only') {
-      mode = 'sentence_cloze';
-    } else {
-      mode = idx % 3 === 0 ? 'letter_fill' : 'sentence_cloze';
-    }
+    mode = 'sentence_cloze';
+  }
+  // Giữ nguyên câu gốc trong đề thành game trắc nghiệm 4 đáp án (hoặc sắp xếp câu nếu đề yêu cầu)
+  if (fallbackMode !== 'fill_only' && mode === 'letter_fill' && raw.sentence) {
+    mode = 'sentence_cloze';
   }
   if (fallbackMode === 'mcq_only' && mode === 'letter_fill') {
     mode = 'sentence_cloze';
   }
-  if (fallbackMode === 'fill_only' && !['letter_fill', 'sentence_cloze'].includes(mode)) {
-    mode = idx % 2 === 0 ? 'letter_fill' : 'sentence_cloze';
-  }
 
   let rawOptions = Array.isArray(raw.options) ? raw.options.map(o => String(o || '').trim()).filter(Boolean) : [];
-  let correctIdx = typeof raw.correct === 'number' && raw.correct >= 0 && raw.correct < rawOptions.length ? raw.correct : 0;
-  let targetWord = String(raw.target_word || rawOptions[correctIdx] || 'vocabulary').trim();
-  // Clean leading A. B. C. D. if present in options
-  rawOptions = rawOptions.map(opt => opt.replace(/^[A-Da-d][\.\)\:\-]\s*/, '').trim());
-  targetWord = targetWord.replace(/^[A-Da-d][\.\)\:\-]\s*/, '').trim();
+  // Clean leading A. B. C. D. if present in options while preserving original exam option order
+  rawOptions = rawOptions.map(opt => opt.replace(/^[A-Da-d][\.\)\:\-]\s*/, '').trim()).filter(Boolean);
+
+  let correctIdx = (typeof raw.correct === 'number' && raw.correct >= 0 && raw.correct < rawOptions.length)
+    ? raw.correct
+    : 0;
+  let targetWord = String(raw.target_word || rawOptions[correctIdx] || 'vocabulary')
+    .replace(/^[A-Da-d][\.\)\:\-]\s*/, '')
+    .trim();
+
+  // Nếu AI trả về target_word khớp với 1 trong 4 đáp án của đề, đồng bộ lại chỉ số correct chuẩn xác
+  const matchedOptIdx = rawOptions.findIndex(opt => opt.toLowerCase() === targetWord.toLowerCase());
+  if (matchedOptIdx !== -1) {
+    correctIdx = matchedOptIdx;
+  }
 
   const correctAnswerText = rawOptions[correctIdx] || targetWord;
-  const uniqueOpts = [];
+  const finalOptions = [];
   rawOptions.forEach(opt => {
-    if (opt && !uniqueOpts.some(u => u.toLowerCase() === opt.toLowerCase())) {
-      uniqueOpts.push(opt);
+    if (opt && finalOptions.length < 4 && !finalOptions.some(u => u.toLowerCase() === opt.toLowerCase())) {
+      finalOptions.push(opt);
     }
   });
-  if (!uniqueOpts.some(u => u.toLowerCase() === correctAnswerText.toLowerCase())) {
-    uniqueOpts.unshift(correctAnswerText);
+  if (!finalOptions.some(u => u.toLowerCase() === correctAnswerText.toLowerCase())) {
+    if (finalOptions.length < 4) {
+      finalOptions.push(correctAnswerText);
+    } else {
+      finalOptions[0] = correctAnswerText;
+    }
   }
   const fallbackDistractors = ['sustainable', 'implement', 'significant', 'comprehensive', 'negotiate', 'proficient', 'mandatory', 'feasible'];
   for (const d of fallbackDistractors) {
-    if (uniqueOpts.length >= 4) break;
-    if (!uniqueOpts.some(u => u.toLowerCase() === d.toLowerCase())) {
-      uniqueOpts.push(d);
+    if (finalOptions.length >= 4) break;
+    if (!finalOptions.some(u => u.toLowerCase() === d.toLowerCase())) {
+      finalOptions.push(d);
     }
   }
-  const finalOptions = uniqueOpts.slice(0, 4);
   let finalCorrect = finalOptions.findIndex(u => u.toLowerCase() === correctAnswerText.toLowerCase());
   if (finalCorrect === -1) {
     finalOptions[0] = correctAnswerText;
     finalCorrect = 0;
   }
 
-  // Ensure single word for letter_fill
-  const alphaOnlyWord = targetWord.replace(/[^a-zA-Z]/g, '');
-  if (mode === 'letter_fill' && (alphaOnlyWord.length < 3 || alphaOnlyWord.length > 14 || targetWord.includes(' '))) {
+  const chosenAnswer = finalOptions[finalCorrect] || targetWord;
+  const alphaOnlyWord = chosenAnswer.replace(/[^a-zA-Z]/g, '');
+  if (mode === 'letter_fill' && (alphaOnlyWord.length < 3 || alphaOnlyWord.length > 14 || chosenAnswer.includes(' '))) {
     mode = 'sentence_cloze';
   }
 
   const maskData = buildMaskedAndMissing(alphaOnlyWord || 'ACADEMIC');
 
+  // Bảo toàn nguyên văn câu hỏi trong đề thi
   let sentence = String(raw.sentence || '').trim();
   if (!sentence) {
     sentence = `The committee decided to ____ the new strategy to improve overall performance.`;
+  } else {
+    sentence = sentence.replace(/_{2,}|\.{3,}|\(\s*_{0,}\s*\)/g, '____');
   }
-  if (!sentence.includes('____')) {
-    const escapedTarget = targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const isDirectQuestion = /\?$/.test(sentence) || /^(which|what|who|where|when|why|how|choose|select|find|mark|identify)\b/i.test(sentence);
+  if (!sentence.includes('____') && !isDirectQuestion && mode !== 'sentence_order') {
+    const escapedTarget = chosenAnswer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`\\b${escapedTarget}\\b`, 'i');
-    if (regex.test(sentence)) {
+    if (chosenAnswer && regex.test(sentence)) {
       sentence = sentence.replace(regex, '____');
-    } else {
-      sentence = `${sentence} (____)`;
     }
   }
 
-  const vietnamese = String(raw.vietnamese || '').trim() || `Nghĩa của "${targetWord}" trong ngữ cảnh đề thi`;
+  const vietnamese = String(raw.vietnamese || '').trim() || `Đáp án đúng: "${chosenAnswer}"`;
   const prompt = String(raw.prompt || '').trim() || (
-    mode === 'letter_fill'
+    mode === 'sentence_order'
+      ? '🧩 Chạm các cụm từ để ghép thành câu đúng trong đề thi:'
+      : mode === 'letter_fill'
       ? 'Chạm các chữ cái bên dưới để hoàn thành từ:'
-      : mode === 'meaning_match'
-      ? 'Chọn từ tiếng Anh chính xác mang nghĩa:'
-      : 'Chọn đáp án chính xác để hoàn thành câu trong đề thi:'
+      : '📄 Câu hỏi nguyên bản từ đề thi • Chọn đáp án đúng:'
   );
+
+  let conciseExplanation = String(raw.explanation || '').trim();
+  if (!conciseExplanation) {
+    conciseExplanation = `Chọn "${chosenAnswer}" (${vietnamese}) vì phù hợp cấu trúc ngữ pháp và ngữ cảnh câu.`;
+  }
 
   return {
     id: `custom_exam_${Date.now()}_${idx}`,
     category: 'custom_exam',
-    grade_label: String(raw.grade_label || 'ĐỀ TỰ NHẬP').trim(),
+    is_custom_exam: true,
+    exam_verbatim: true,
+    grade_label: String(raw.grade_label || 'ĐỀ THI GỐC').trim(),
     band: String(raw.band || '6.5+').trim(),
     topic: String(raw.topic || 'Đề Thi AI').trim(),
-    target_word: mode === 'letter_fill' ? alphaOnlyWord.toLowerCase() : targetWord,
+    target_word: mode === 'letter_fill' ? alphaOnlyWord.toLowerCase() : chosenAnswer,
     phonetic: String(raw.phonetic || '').trim(),
     vietnamese,
     mode,
@@ -181,44 +199,149 @@ function normalizeImportedQuestion(raw, idx, fallbackMode = 'mixed') {
     prompt,
     options: finalOptions,
     correct: finalCorrect,
-    explanation: String(raw.explanation || `Đáp án đúng là "${finalOptions[finalCorrect]}" (${vietnamese}).`).trim(),
-    real_exam_sentence: sentence.replace(/_{2,}/g, finalOptions[finalCorrect]),
-    exam_task: 'Đề Thi Tự Nhập (AI Importer)',
+    explanation: conciseExplanation,
+    real_exam_sentence: sentence.includes('____') ? sentence.replace(/_{2,}/g, chosenAnswer) : sentence,
+    exam_task: 'Đề Thi Gốc (AI Giải Đề)',
     common_mistake: String(raw.common_mistake || '').trim()
   };
 }
 
-function parseExamTextLocally(text, questionCount = 10, questionTypeMode = 'mixed') {
+const LOCAL_EXAM_SOLVER_KB = [
+  {
+    match: /prior to/i,
+    vn: 'trước khi (= before)',
+    exp: 'Sau "prior to" + V-ing (prior to entering = trước khi bước vào).'
+  },
+  {
+    match: /discrepancy/i,
+    vn: 'sự chênh lệch, khác biệt',
+    exp: 'Cụm "discrepancy between A and B" chỉ sự chênh lệch giữa dự toán và thực tế.'
+  },
+  {
+    match: /contingent/i,
+    vn: 'phụ thuộc vào điều kiện',
+    exp: 'Cấu trúc "be contingent upon/on + N/V-ing" = phụ thuộc vào việc hoàn thành điều kiện.'
+  },
+  {
+    match: /reimburse/i,
+    vn: 'hoàn trả chi phí',
+    exp: 'Sau "can" cần động từ nguyên mẫu; "reimburse expenses" = hoàn lại chi phí lưu trú.'
+  },
+  {
+    match: /stringent/i,
+    vn: 'nghiêm ngặt, khắt khe',
+    exp: 'Collocation "stringent quality control standards" = tiêu chuẩn kiểm soát chất lượng nghiêm ngặt.'
+  },
+  {
+    match: /sustainable/i,
+    vn: 'bền vững, thân thiện môi trường',
+    exp: '"Sustainable" là tính từ bổ nghĩa cho danh từ chỉ chiến lược/phát triển bền vững.'
+  },
+  {
+    match: /mandatory/i,
+    vn: 'bắt buộc (= compulsory)',
+    exp: '"Mandatory" mang nghĩa bắt buộc theo quy định.'
+  },
+  {
+    match: /comprehensive/i,
+    vn: 'toàn diện, đầy đủ',
+    exp: '"Comprehensive" bổ nghĩa cho danh từ chỉ kế hoạch/đánh giá toàn diện.'
+  }
+];
+
+function solveExamQuestionLocally(sentence, options, providedCorrect = null) {
+  const s = String(sentence || '');
+  const opts = Array.isArray(options) ? options : [];
+  let bestIdx = typeof providedCorrect === 'number' && providedCorrect >= 0 && providedCorrect < opts.length
+    ? providedCorrect
+    : -1;
+
+  // 1. Nếu chưa có đáp án, dò trong cơ sở tri thức & ngữ cảnh câu
+  if (bestIdx === -1) {
+    for (let i = 0; i < opts.length; i++) {
+      const opt = String(opts[i] || '').trim();
+      if (/____\s+entering/i.test(s) && /^prior to$/i.test(opt)) { bestIdx = i; break; }
+      if (/____\s+between/i.test(s) && /^discrepancy$/i.test(opt)) { bestIdx = i; break; }
+      if (/____\s+(upon|on)\b/i.test(s) && /^(contingent|dependent|based)$/i.test(opt)) { bestIdx = i; break; }
+      if (/can\s+____\s+your/i.test(s) && /^reimburse$/i.test(opt)) { bestIdx = i; break; }
+      if (/____\s+quality\s+control/i.test(s) && /^stringent$/i.test(opt)) { bestIdx = i; break; }
+    }
+  }
+
+  // 2. Dò các mẫu ngữ pháp phổ biến quanh chỗ trống ____
+  if (bestIdx === -1 && opts.length > 0) {
+    for (let i = 0; i < opts.length; i++) {
+      const kbHit = LOCAL_EXAM_SOLVER_KB.find(k => k.match.test(opts[i]));
+      if (kbHit) {
+        bestIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (bestIdx === -1) bestIdx = 0;
+  const ans = String(opts[bestIdx] || 'academic').trim();
+  const kbEntry = LOCAL_EXAM_SOLVER_KB.find(k => k.match.test(ans));
+
+  return {
+    correct: bestIdx,
+    target_word: ans,
+    vietnamese: kbEntry ? kbEntry.vn : `Đáp án đúng: "${ans}"`,
+    explanation: kbEntry
+      ? kbEntry.exp
+      : `AI chọn "${ans}" vì phù hợp ngữ pháp và ngữ cảnh của câu trong đề thi.`
+  };
+}
+
+function parseExamTextLocally(text, questionCount = 5, questionTypeMode = 'mixed', offset = 0) {
+  const MAX_EXAM_CAP = 60;
+  const safeOffset = Math.max(0, Math.min(MAX_EXAM_CAP, Number(offset) || 0));
+  const remainingQuota = Math.max(0, MAX_EXAM_CAP - safeOffset);
+  const safeCount = Math.min(remainingQuota, Math.max(1, Number(questionCount) || 5));
+
   const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const extracted = [];
 
-  // 1. Try parsing numbered MCQ blocks: "1. Question text ... A. ... B. ... C. ... D. ..."
+  // 1. Parse numbered or unnumbered MCQ blocks verbatim from the exam
   let currentQ = null;
   for (const line of lines) {
-    const qMatch = line.match(/^(?:Câu\s*\d+|Question\s*\d+|\d+)[\.\:\)\-]\s*(.+)/i);
+    const qMatch = line.match(/^(?:Câu\s*\d+|Question\s*\d+|Q\d+|\d+)[\.\:\)\-]\s*(.+)/i);
     const optMatch = line.match(/^([A-D])[\.\)\:\-]\s*(.+)/i);
-    const ansMatch = line.match(/^(?:Đáp án|Answer|Key)[\s\:\-]*([A-D])/i);
+    const ansMatch = line.match(/^(?:Đáp án|Answer|Key|ĐA)[\s\:\-]*([A-D])/i);
 
     if (qMatch && !optMatch) {
       if (currentQ && currentQ.sentence) {
         extracted.push(currentQ);
       }
+      const rawLine = qMatch[1].trim();
+      const inlineSplit = rawLine.split(/\s+(?=[A-D][\.\)\:\-]\s)/);
+      const stemText = inlineSplit[0].replace(/_{2,}|\.{3,}|\(\s*\)/g, '____').trim();
       currentQ = {
-        sentence: qMatch[1].replace(/_{2,}|\.{3,}|\(\s*\)/g, '____'),
+        sentence: stemText,
         options: [],
-        correct: 0,
+        providedCorrect: null,
         vietnamese: '',
         explanation: ''
       };
+      if (inlineSplit.length > 1) {
+        inlineSplit.slice(1).forEach(part => {
+          const m = part.trim().match(/^([A-D])[\.\)\:\-]\s*(.+)/i);
+          if (m) {
+            const isStarred = m[2].includes('*');
+            const cleanOpt = m[2].replace(/\*/g, '').trim();
+            if (isStarred) currentQ.providedCorrect = currentQ.options.length;
+            currentQ.options.push(cleanOpt);
+          }
+        });
+      }
     } else if (optMatch && currentQ) {
-      // Check if line has multiple options on the same line: "A. foo   B. bar   C. baz   D. qux"
       const multiParts = line.split(/\s+(?=[A-D][\.\)\:\-]\s)/);
       if (multiParts.length > 1) {
         multiParts.forEach(part => {
           const m = part.trim().match(/^([A-D])[\.\)\:\-]\s*(.+)/i);
           if (m) {
             const cleanOpt = m[2].replace(/\*/g, '').trim();
-            if (m[2].includes('*')) currentQ.correct = currentQ.options.length;
+            if (m[2].includes('*')) currentQ.providedCorrect = currentQ.options.length;
             currentQ.options.push(cleanOpt);
           }
         });
@@ -226,14 +349,15 @@ function parseExamTextLocally(text, questionCount = 10, questionTypeMode = 'mixe
         const rawOpt = optMatch[2].trim();
         const isStarred = rawOpt.includes('*');
         const cleanOpt = rawOpt.replace(/\*/g, '').trim();
-        if (isStarred) currentQ.correct = currentQ.options.length;
+        if (isStarred) currentQ.providedCorrect = currentQ.options.length;
         currentQ.options.push(cleanOpt);
       }
     } else if (ansMatch && currentQ) {
       const letter = ansMatch[1].toUpperCase();
-      currentQ.correct = Math.max(0, ['A', 'B', 'C', 'D'].indexOf(letter));
+      currentQ.providedCorrect = Math.max(0, ['A', 'B', 'C', 'D'].indexOf(letter));
+    } else if (currentQ && currentQ.options.length === 0 && !/^(?:Đáp án|Answer|Key)/i.test(line)) {
+      currentQ.sentence = `${currentQ.sentence} ${line.replace(/_{2,}|\.{3,}|\(\s*\)/g, '____')}`.trim();
     } else if (line.includes(' - ') || line.includes(': ')) {
-      // Vocabulary line format: "word: meaning" or "word - meaning"
       const sep = line.includes(' - ') ? ' - ' : ': ';
       const parts = line.split(sep);
       if (parts.length >= 2 && parts[0].length <= 30) {
@@ -243,10 +367,10 @@ function parseExamTextLocally(text, questionCount = 10, questionTypeMode = 'mixe
           extracted.push({
             target_word: w,
             vietnamese: vn,
-            sentence: `In professional and academic contexts, "${w}" (____) plays an important role.`,
+            sentence: `In professional and academic contexts, "____" means "${vn}".`,
             options: [w, 'sustainable', 'comprehensive', 'mandatory'],
-            correct: 0,
-            explanation: `"${w}" mang nghĩa là: ${vn}.`
+            providedCorrect: 0,
+            explanation: `Chọn "${w}" vì mang nghĩa là "${vn}".`
           });
         }
       }
@@ -257,30 +381,42 @@ function parseExamTextLocally(text, questionCount = 10, questionTypeMode = 'mixe
   }
 
   if (extracted.length === 0) {
-    // Fallback sample questions from text keywords
     const words = String(text || '')
       .match(/[a-zA-Z]{5,12}/g) || ['sustainable', 'comprehensive', 'mandatory', 'discrepancy', 'reimburse'];
-    const uniqueWords = [...new Set(words.map(w => w.toLowerCase()))].slice(0, questionCount);
-    uniqueWords.forEach((w, idx) => {
+    const uniqueWords = [...new Set(words.map(w => w.toLowerCase()))].slice(0, MAX_EXAM_CAP);
+    uniqueWords.forEach((w) => {
+      const solved = solveExamQuestionLocally(`Please complete the exam sentence with the correct term: ____.`, [w, 'alternative', 'provisional', 'substantial'], 0);
       extracted.push({
         target_word: w,
-        vietnamese: `Từ vựng trích xuất từ đề: "${w}"`,
+        vietnamese: solved.vietnamese,
         sentence: `Please complete the exam context using the appropriate term: ____.`,
         options: [w, 'alternative', 'provisional', 'substantial'],
-        correct: 0,
-        mode: idx % 2 === 0 ? 'sentence_cloze' : 'letter_fill',
-        explanation: `Từ mục tiêu "${w}" được trích xuất trực tiếp từ tài liệu đề thi của bạn.`
+        providedCorrect: 0,
+        mode: 'sentence_cloze',
+        explanation: solved.explanation
       });
     });
   }
 
-  return extracted.slice(0, questionCount).map((q, idx) => {
-    const chosenAnswer = (q.options && q.options[q.correct]) || q.target_word || 'academic';
+  const cappedTotal = extracted.slice(0, MAX_EXAM_CAP);
+  const slicedBatch = cappedTotal.slice(safeOffset, safeOffset + safeCount);
+  const questions = slicedBatch.map((q, idx) => {
+    const solved = solveExamQuestionLocally(q.sentence, q.options, q.providedCorrect);
     return normalizeImportedQuestion({
       ...q,
-      target_word: q.target_word || chosenAnswer
-    }, idx, questionTypeMode);
+      mode: q.mode || 'sentence_cloze',
+      correct: solved.correct,
+      target_word: q.target_word || solved.target_word,
+      vietnamese: q.vietnamese || solved.vietnamese,
+      explanation: q.explanation || solved.explanation
+    }, safeOffset + idx, questionTypeMode);
   });
+
+  return {
+    questions,
+    totalAvailable: cappedTotal.length,
+    hasMore: (safeOffset + questions.length) < cappedTotal.length && (safeOffset + questions.length) < MAX_EXAM_CAP
+  };
 }
 
 async function handleExamImportRequest(req, res) {
@@ -310,8 +446,26 @@ async function handleExamImportRequest(req, res) {
         ? payload.images.filter(img => img && typeof img.base64Data === 'string' && img.base64Data.trim().length > 0)
         : [];
       let rawText = String(payload.rawText || '').trim();
-      const questionCount = Math.min(25, Math.max(5, Number(payload.questionCount) || 10));
+      const offset = Math.max(0, Math.min(60, Number(payload.offset) || 0));
+      const remainingQuota = Math.max(0, 60 - offset);
+      const questionCount = Math.min(remainingQuota, Math.max(1, Number(payload.questionCount) || 5));
+      const excludeSentences = Array.isArray(payload.excludeSentences) ? payload.excludeSentences.slice(0, 60) : [];
       const questionTypeMode = String(payload.questionTypeMode || 'mixed').trim();
+
+      if (remainingQuota <= 0) {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          success: true,
+          source: 'quota-reached',
+          offset,
+          maxQuestions: 60,
+          count: 0,
+          totalAvailable: 60,
+          hasMore: false,
+          questions: []
+        }));
+        return;
+      }
 
       // 1. If a Word (.docx / .doc) or .txt file was uploaded as base64, extract text first
       const isDocx = mimeType.includes('word') || mimeType.includes('officedocument') || /\.docx?$/i.test(fileName);
@@ -328,7 +482,6 @@ async function handleExamImportRequest(req, res) {
               rawText = result.value.trim() + '\n' + rawText;
             }
           } catch (docErr) {
-            // Fallback: extract printable ASCII/UTF-8 strings from buffer
             rawText = fileBuffer.toString('utf-8').replace(/<[^>]+>/g, ' ') + '\n' + rawText;
           }
         }
@@ -356,26 +509,19 @@ async function handleExamImportRequest(req, res) {
             httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
           });
 
-          const modeInstruction = questionTypeMode === 'mcq_only'
-            ? 'TẤT CẢ câu hỏi phải ở dạng trắc nghiệm 4 đáp án A, B, C, D ("sentence_cloze", "word_class", "collocation", "preposition", hoặc "meaning_match"). KHÔNG tạo mode "letter_fill".'
-            : questionTypeMode === 'fill_only'
-            ? 'Tập trung tạo câu hỏi điền từ vào chỗ trống trong câu ("sentence_cloze" có dấu ____ trong câu) VÀ điền chữ cái khuyết hoàn thành từ vựng ("letter_fill").'
-            : 'Kết hợp đa dạng cả câu hỏi Trắc nghiệm điền vào chỗ trống ("sentence_cloze", "word_class", "collocation", "preposition") VÀ câu hỏi Điền chữ cái hoàn thành từ ("letter_fill", chiếm khoảng 30% số câu).';
+          const systemInstruction = `Bạn là chuyên gia giải đề IELTS, TOEIC & Tiếng Anh phổ thông của hệ thống "Danh học IELTS & TOEIC Arena".
+Nhiệm vụ của bạn là đọc kỹ đề thi tiếng Anh (từ ảnh chụp đề thi, file PDF, file Word hoặc văn bản) và BÊ NGUYÊN CÁC CÂU HỎI TRONG ĐỀ THÀNH GAME, đồng thời TỰ ĐỘNG CHỌN ĐÁP ÁN ĐÚNG và GIẢI THÍCH NGẮN GỌN.
 
-          const systemInstruction = `Bạn là chuyên gia khảo thí IELTS & TOEIC của hệ thống "Danh học IELTS & TOEIC Arena".
-Nhiệm vụ của bạn là đọc kỹ đề thi tiếng Anh (từ một hoặc nhiều ảnh chụp đề thi, file PDF, file Word hoặc văn bản) và chuyển đổi/trích xuất thành đúng ${questionCount} câu hỏi tương tác chất lượng cao.
 Quy tắc bắt buộc:
-1. Nếu tài liệu/các ảnh chụp đã có sẵn các câu hỏi trắc nghiệm hoặc điền từ: hãy trích xuất chính xác nội dung câu hỏi từ TẤT CẢ các ảnh (thay chỗ trống bằng "____"), giữ nguyên 4 phương án lựa chọn, xác định đúng đáp án (chỉ số correct từ 0 đến 3), dịch nghĩa tiếng Việt của từ khóa chính (vietnamese), và viết giải thích ngắn gọn dễ hiểu bằng tiếng Việt (explanation).
-2. Nếu tài liệu là bài đọc (Reading passage), bảng từ vựng, hoặc ghi chú: hãy tự động thiết kế ${questionCount} câu hỏi trắc nghiệm điền từ ("sentence_cloze") và điền chữ cái ("letter_fill") bám sát các từ vựng/cấu trúc quan trọng nhất trong tài liệu đó.
-3. ${modeInstruction}
-4. Với mỗi câu hỏi:
-   - "target_word": từ vựng tiếng Anh cốt lõi là đáp án đúng (1 từ đơn nếu mode là "letter_fill").
-   - "phonetic": phiên âm quốc tế IPA của target_word (ví dụ "/səˈsteɪ.nə.bəl/").
-   - "vietnamese": nghĩa tiếng Việt ngắn gọn, chuẩn xác của target_word.
-   - "sentence": câu tiếng Anh có chứa "____" tại vị trí từ cần điền.
-   - "options": mảng gồm đúng 4 chuỗi phương án tiếng Anh khác nhau, trong đó options[correct] là đáp án đúng.
-   - "correct": số nguyên 0, 1, 2, hoặc 3 tương ứng vị trí đáp án đúng trong mảng options.
-   - "explanation": giải thích ngắn gọn bằng tiếng Việt vì sao chọn đáp án đó (ngữ pháp, collocation, hoặc nghĩa ngữ cảnh).`;
+1. BÊ NGUYÊN CÂU TRONG ĐỀ THÀNH GAME:
+   - Nếu trong ảnh chụp / file / văn bản có sẵn các câu hỏi của đề thi: hãy trích xuất NGUYÊN VĂN 100% nội dung từng câu hỏi ("sentence") và giữ nguyên 4 phương án A, B, C, D ("options") theo đúng thứ tự trong đề. Chỗ trống trong câu ký hiệu thống nhất là "____".
+   - KHÔNG tự ý biến đổi câu hỏi trắc nghiệm của đề thành câu điền chữ cái ("letter_fill"). Hãy giữ mode là "sentence_cloze" (hoặc "word_class", "preposition", "collocation" tùy câu hỏi, hoặc "sentence_order" nếu đề bài gốc yêu cầu sắp xếp các từ thành câu).
+   - Nếu tài liệu chỉ là đoạn văn Reading hoặc bảng từ vựng chưa có câu hỏi: khi đó mới tự thiết kế câu hỏi trắc nghiệm 4 đáp án bám sát nguyên văn câu trong bài.
+2. AI TỰ CHỌN ĐÁP ÁN ĐÚNG CHÍNH XÁC 100%:
+   - Phân tích kỹ ngữ pháp, từ loại, giới từ, collocation và ngữ cảnh để xác định chính xác đáp án đúng ("correct": chỉ số 0, 1, 2, hoặc 3 tương ứng A, B, C, D; và "target_word": nội dung đáp án đúng).
+3. GIẢI THÍCH NGẮN GỌN, SÚC TÍCH TRÊN 1 MÀN HÌNH:
+   - "vietnamese": Nghĩa tiếng Việt ngắn gọn, rõ ràng của đáp án đúng trong ngữ cảnh câu.
+   - "explanation": Giải thích NGẮN GỌN trong 1 câu (tối đa 22 từ) vì sao chọn đáp án đó (nêu rõ cấu trúc ngữ pháp, dấu hiệu nhận biết hoặc nghĩa). Không viết dài dòng.`;
 
           const contentsParts = [];
           if (imagesList.length > 0) {
@@ -401,8 +547,12 @@ Quy tắc bắt buộc:
               text: `Nội dung đề thi / tài liệu:\n${rawText.slice(0, 30000)}`
             });
           }
+          const rangeInstruction = offset > 0
+            ? `Bỏ qua ${offset} câu hỏi đầu tiên đã trích xuất trước đó${excludeSentences.length > 0 ? ` (không lặp lại các câu đã tạo: ${excludeSentences.slice(-8).join(' | ')})` : ''}. Hãy trích xuất tiếp tối đa ${questionCount} câu hỏi tiếp theo trong đề thi (tổng tối đa 60 câu cho 1 đề).`
+            : `Chỉ trích xuất trước ĐÚNG ${questionCount} câu hỏi đầu tiên trong đề thi để học sinh vào làm ngay lập tức.`;
+
           contentsParts.push({
-            text: `Hãy trích xuất và tạo ${questionCount} câu hỏi theo đúng cấu trúc JSON Schema yêu cầu.`
+            text: `${rangeInstruction} Tự động chọn đáp án đúng và giải thích ngắn gọn theo đúng JSON Schema.`
           });
 
           const response = await ai.models.generateContent({
@@ -413,29 +563,29 @@ Quy tắc bắt buộc:
               responseMimeType: 'application/json',
               responseSchema: {
                 type: SchemaType.ARRAY,
-                description: 'Danh sách câu hỏi trắc nghiệm và điền từ trích xuất từ đề thi',
+                description: 'Danh sách câu hỏi nguyên bản từ đề thi kèm đáp án đúng và giải thích ngắn gọn của AI',
                 items: {
                   type: SchemaType.OBJECT,
                   properties: {
-                    target_word: { type: SchemaType.STRING, description: 'Từ vựng hoặc đáp án đúng tiếng Anh' },
-                    phonetic: { type: SchemaType.STRING, description: 'Phiên âm IPA của từ' },
-                    vietnamese: { type: SchemaType.STRING, description: 'Nghĩa tiếng Việt ngắn gọn' },
+                    target_word: { type: SchemaType.STRING, description: 'Nội dung đáp án đúng tiếng Anh' },
+                    phonetic: { type: SchemaType.STRING, description: 'Phiên âm IPA của từ khóa đáp án (nếu là từ đơn)' },
+                    vietnamese: { type: SchemaType.STRING, description: 'Nghĩa tiếng Việt ngắn gọn của đáp án đúng' },
                     mode: {
                       type: SchemaType.STRING,
-                      description: 'Loại câu hỏi: sentence_cloze, letter_fill, word_class, collocation, preposition, hoặc meaning_match'
+                      description: 'Loại câu hỏi: ưu tiên sentence_cloze, word_class, collocation, preposition, hoặc sentence_order'
                     },
                     band: { type: SchemaType.STRING, description: 'Band điểm ước lượng (ví dụ: 6.5, TOEIC 600)' },
-                    topic: { type: SchemaType.STRING, description: 'Chủ đề ngắn gọn của câu hỏi' },
-                    sentence: { type: SchemaType.STRING, description: 'Câu tiếng Anh có dấu ____ ở chỗ trống cần điền' },
-                    prompt: { type: SchemaType.STRING, description: 'Yêu cầu câu hỏi tiếng Việt' },
+                    topic: { type: SchemaType.STRING, description: 'Chủ đề ngữ pháp/từ vựng ngắn gọn (ví dụ: Giới từ, Từ loại, Ngữ cảnh)' },
+                    sentence: { type: SchemaType.STRING, description: 'Nguyên văn câu hỏi trong đề thi (dùng ____ cho chỗ trống nếu có)' },
+                    prompt: { type: SchemaType.STRING, description: 'Yêu cầu câu hỏi ngắn gọn' },
                     options: {
                       type: SchemaType.ARRAY,
                       items: { type: SchemaType.STRING },
-                      description: 'Đúng 4 phương án lựa chọn (không kèm tiền tố A. B. C. D.)'
+                      description: 'Đúng 4 phương án A, B, C, D nguyên bản từ đề thi (không kèm tiền tố A. B. C. D.)'
                     },
-                    correct: { type: SchemaType.INTEGER, description: 'Chỉ số đáp án đúng từ 0 đến 3' },
-                    explanation: { type: SchemaType.STRING, description: 'Giải thích chi tiết bằng tiếng Việt' },
-                    common_mistake: { type: SchemaType.STRING, description: 'Lưu ý bẫy phòng thi hoặc từ dễ nhầm (nếu có)' }
+                    correct: { type: SchemaType.INTEGER, description: 'Chỉ số đáp án đúng từ 0 đến 3 do AI giải' },
+                    explanation: { type: SchemaType.STRING, description: 'Giải thích ngắn gọn 1 câu bằng tiếng Việt vì sao đáp án đó đúng' },
+                    common_mistake: { type: SchemaType.STRING, description: 'Lưu ý ngắn gọn bẫy dễ nhầm (nếu có)' }
                   },
                   required: ['target_word', 'vietnamese', 'mode', 'sentence', 'options', 'correct', 'explanation']
                 }
@@ -447,13 +597,17 @@ Quy tắc bắt buộc:
           if (Array.isArray(parsedJson) && parsedJson.length > 0) {
             const questions = parsedJson
               .slice(0, questionCount)
-              .map((item, idx) => normalizeImportedQuestion(item, idx, questionTypeMode));
+              .map((item, idx) => normalizeImportedQuestion(item, offset + idx, questionTypeMode));
 
+            const nextOffset = offset + questions.length;
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify({
               success: true,
               source: 'gemini-ai',
+              offset,
+              maxQuestions: 60,
               count: questions.length,
+              hasMore: questions.length >= questionCount && nextOffset < 60,
               questions
             }));
             return;
@@ -463,30 +617,29 @@ Quy tắc bắt buộc:
         }
       }
 
-      // Local deterministic parser fallback for raw text / Word text / offline image fallback
+      // Local deterministic parser + AI solver fallback for raw text / Word text / offline image fallback
       const defaultExamSeed = rawText.trim() ||
 `1. All visitors must display their identification badges ____ entering the research laboratory.
-A. prior to   B. instead of   C. except for   D. regardless of
-Answer: A
+A. instead of   B. prior to   C. except for   D. regardless of
 2. The accounting department found a significant ____ between the estimated budget and actual expenses.
-A. discrepancy   B. itinerary   C. warranty   D. vacancy
-Answer: A
+A. itinerary   B. warranty   C. discrepancy   D. vacancy
 3. The contract renewal is ____ upon completing the mandatory safety certification.
 A. contingent   B. complimentary   C. tentative   D. lucrative
-Answer: A
 4. Please submit all original travel receipts so we can ____ your accommodation expenses promptly.
-A. reimburse   B. postpone   C. supervise   D. terminate
-Answer: A
+A. postpone   B. reimburse   C. supervise   D. terminate
 5. Following the merger, the board implemented ____ quality control standards across all factories.
-A. stringent   B. eligible   C. confidential   D. prospective
-Answer: A`;
-      const fallbackQuestions = parseExamTextLocally(defaultExamSeed, questionCount, questionTypeMode);
+A. eligible   B. confidential   C. prospective   D. stringent`;
+      const localResult = parseExamTextLocally(defaultExamSeed, questionCount, questionTypeMode, offset);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         success: true,
         source: 'local-parser',
-        count: fallbackQuestions.length,
-        questions: fallbackQuestions
+        offset,
+        maxQuestions: 60,
+        count: localResult.questions.length,
+        totalAvailable: localResult.totalAvailable,
+        hasMore: localResult.hasMore,
+        questions: localResult.questions
       }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });

@@ -77,12 +77,22 @@ class GameEngine {
     this.memoryProfiles = this.loadMemoryProfiles();
     this.dailyTracker = this.loadDailyTracker();
     this.autoNextEnabled = this.loadAutoNextSetting();
+    this.hapticEnabled = this.loadHapticSetting();
+    this.lastHapticStyle = null;
+    this.lastHapticPattern = null;
+    this.hapticHistory = [];
     this.customExamBank = this.loadCustomExamBank();
     this.savedExamPhotos = this.loadSavedExamPhotos();
+    this.savedExamsHistory = this.loadSavedExamsHistory();
     this.selectedExamFile = null;
     this.examQuestionTypeMode = 'mixed';
-    this.examQuestionCount = 10;
+    this.initialExamBatchSize = 5;
+    this.maxQuestionsPerExam = 60;
+    this.examQuestionCount = 60;
+    this.isGeneratingExamInBackground = false;
+    this.backgroundExamJobId = 0;
     this.masterySearchQuery = '';
+    this.audioGradeFilter = this.loadAudioGradeFilter();
     this.currentGradeFilter = 'all'; // Mặc định luôn luôn là adaptive toàn diện theo yêu cầu người dùng
 
     this.initDOMElements();
@@ -92,8 +102,10 @@ class GameEngine {
     this.preloadedQuestionCache = new Map();
 
     this.updateGradeFilterUI();
+    this.updateAudioGradeFilterUI();
     this.updateDailyTrackerUI();
     this.updateAutoNextUI();
+    this.updateHapticUI();
     this.renderSavedExamPhotosGallery();
     this.renderCustomExamPreview();
   }
@@ -341,27 +353,170 @@ class GameEngine {
     }
   }
 
-  // Hệ thống phản hồi xúc giác vật lý (Tactile Haptic Feedback) đa nền tảng (Android Vibrate API + iOS 17.4+/18+ Taptic Switch)
-  triggerHaptic(style = 'light') {
+  // Hệ thống phản hồi rung xúc giác (Haptic Feedback Engine) đa tầng qua Haptic API của trình duyệt:
+  // 1. Web Vibration API (navigator.vibrate) với nhịp rung vật lý riêng biệt cho Đúng / Sai / Chuỗi Combo / Hết giờ
+  // 2. Web Gamepad HapticActuator API (vibrationActuator.playEffect / pulse) nếu thiết bị/tay cầm hỗ trợ
+  // 3. iOS 17.4+ / iOS 18+ Safari Native Taptic Engine qua công tắc <input type="checkbox" switch>
+  // 4. Sub-Bass Acoustic Tactile Impulse (Web Audio 45Hz-115Hz) + Phản hồi vi chuyển động (Visual Micro-Haptics)
+  triggerHaptic(style = 'light', options = {}) {
+    const normalizedStyle = style === 'correct'
+      ? 'success'
+      : (style === 'wrong' ? 'error' : String(style || 'light'));
+
+    let pattern = [12];
+    if (normalizedStyle === 'light' || normalizedStyle === 'tap') {
+      pattern = [12];
+    } else if (normalizedStyle === 'medium') {
+      pattern = [22];
+    } else if (normalizedStyle === 'success') {
+      // Trả lời ĐÚNG: Nhịp rung đôi giòn giã (hoặc nhịp 3 cao trào khi đạt chuỗi Streak >= 3)
+      pattern = this.streak >= 3 ? [18, 28, 26, 28, 52] : [20, 35, 38];
+    } else if (normalizedStyle === 'error') {
+      // Trả lời SAI: Nhịp rung kép trầm và đầm (Double Heavy Buzz) tạo cảm giác khựng thực tế
+      pattern = [65, 45, 95];
+    } else if (normalizedStyle === 'timeout') {
+      // HẾT GIỜ: Nhịp rung cảnh báo dứt khoát
+      pattern = [85, 50, 120];
+    } else {
+      pattern = [15];
+    }
+
+    this.lastHapticStyle = normalizedStyle;
+    this.lastHapticPattern = pattern;
+    if (!Array.isArray(this.hapticHistory)) {
+      this.hapticHistory = [];
+    }
+    this.hapticHistory.push({
+      style: normalizedStyle,
+      pattern: [...pattern],
+      timestamp: Date.now()
+    });
+    if (this.hapticHistory.length > 30) {
+      this.hapticHistory.shift();
+    }
+
+    if (this.hapticEnabled === false && !(options && options.force)) {
+      return false;
+    }
+
     try {
+      // 1. Chuẩn Web Vibration API của trình duyệt (navigator.vibrate)
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-        if (style === 'light') {
-          navigator.vibrate(12);
-        } else if (style === 'medium') {
-          navigator.vibrate(22);
-        } else if (style === 'success') {
-          navigator.vibrate([22, 30, 35]);
-        } else if (style === 'error') {
-          navigator.vibrate([55, 45, 65]);
-        } else {
-          navigator.vibrate(14);
+        navigator.vibrate(pattern.length === 1 ? pattern[0] : pattern);
+      }
+
+      // 2. Chuẩn Gamepad HapticActuator API của trình duyệt (dual-rumble / pulse)
+      if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+        const gamepads = navigator.getGamepads() || [];
+        for (let i = 0; i < gamepads.length; i++) {
+          const gp = gamepads[i];
+          if (!gp) continue;
+          const actuator = gp.vibrationActuator || (Array.isArray(gp.hapticActuators) && gp.hapticActuators[0]);
+          if (actuator && typeof actuator.playEffect === 'function') {
+            if (normalizedStyle === 'success') {
+              actuator.playEffect('dual-rumble', {
+                startDelay: 0,
+                duration: 95,
+                weakMagnitude: 0.75,
+                strongMagnitude: 0.35
+              }).catch(() => {});
+            } else if (normalizedStyle === 'error' || normalizedStyle === 'timeout') {
+              actuator.playEffect('dual-rumble', {
+                startDelay: 0,
+                duration: 185,
+                weakMagnitude: 0.55,
+                strongMagnitude: 0.95
+              }).catch(() => {});
+            } else {
+              actuator.playEffect('dual-rumble', {
+                startDelay: 0,
+                duration: 24,
+                weakMagnitude: 0.3,
+                strongMagnitude: 0.1
+              }).catch(() => {});
+            }
+          } else if (actuator && typeof actuator.pulse === 'function') {
+            const intensity = (normalizedStyle === 'error' || normalizedStyle === 'timeout') ? 0.9 : (normalizedStyle === 'success' ? 0.65 : 0.25);
+            const dur = (normalizedStyle === 'error' || normalizedStyle === 'timeout') ? 160 : (normalizedStyle === 'success' ? 85 : 20);
+            actuator.pulse(intensity, dur).catch(() => {});
+          }
         }
       }
-      // Hỗ trợ Taptic Engine vật lý trên iOS 17.4+ / iOS 18+ Safari qua input[switch]
+
+      // 3. Hỗ trợ Taptic Engine vật lý trên iOS 17.4+ / iOS 18+ Safari qua input[switch]
       if (this.iosHapticTrigger && typeof this.iosHapticTrigger.click === 'function') {
         this.iosHapticTrigger.click();
+        if (normalizedStyle === 'success') {
+          setTimeout(() => {
+            if (this.iosHapticTrigger && typeof this.iosHapticTrigger.click === 'function') {
+              this.iosHapticTrigger.click();
+            }
+          }, 65);
+        } else if (normalizedStyle === 'error' || normalizedStyle === 'timeout') {
+          setTimeout(() => {
+            if (this.iosHapticTrigger && typeof this.iosHapticTrigger.click === 'function') {
+              this.iosHapticTrigger.click();
+            }
+          }, 55);
+          setTimeout(() => {
+            if (this.iosHapticTrigger && typeof this.iosHapticTrigger.click === 'function') {
+              this.iosHapticTrigger.click();
+            }
+          }, 115);
+        }
+      }
+
+      // 4. Xung cộng hưởng trầm (Sub-Bass Tactile Impulse) qua Web Audio API
+      if (typeof soundEngine !== 'undefined' && soundEngine && typeof soundEngine.playHapticPulse === 'function') {
+        const pulseType = (normalizedStyle === 'success' && this.streak >= 3) ? 'fever' : normalizedStyle;
+        soundEngine.playHapticPulse(pulseType);
+      }
+
+      // 5. Hiệu ứng phản hồi xúc giác thị giác đồng bộ trên thẻ câu hỏi khi trả lời Đúng / Sai
+      if (this.questionCard && this.questionCard.classList && (normalizedStyle === 'success' || normalizedStyle === 'error' || normalizedStyle === 'timeout')) {
+        const cls = normalizedStyle === 'success' ? 'haptic-card-success' : 'haptic-card-error';
+        this.questionCard.classList.remove('haptic-card-success', 'haptic-card-error');
+        this.questionCard.classList.add(cls);
+        clearTimeout(this.hapticVisualTimeout);
+        this.hapticVisualTimeout = setTimeout(() => {
+          if (this.questionCard && this.questionCard.classList) {
+            this.questionCard.classList.remove('haptic-card-success', 'haptic-card-error');
+          }
+        }, 380);
       }
     } catch (e) {}
+    return true;
+  }
+
+  loadHapticSetting() {
+    try {
+      const saved = localStorage.getItem('ielts_haptic_enabled');
+      if (saved === null) return true;
+      return saved === 'true';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  toggleHaptic() {
+    this.hapticEnabled = !this.hapticEnabled;
+    try {
+      localStorage.setItem('ielts_haptic_enabled', String(this.hapticEnabled));
+    } catch (e) {}
+    this.updateHapticUI();
+    if (this.hapticEnabled) {
+      this.triggerHaptic('success', { force: true });
+    }
+    return this.hapticEnabled;
+  }
+
+  updateHapticUI() {
+    if (this.settingsHapticBadge) {
+      this.settingsHapticBadge.textContent = this.hapticEnabled ? 'Bật 📳' : 'Tắt 📴';
+    }
+    if (this.btnHapticToggle && this.btnHapticToggle.classList) {
+      this.btnHapticToggle.classList.toggle('muted-setting', !this.hapticEnabled);
+    }
   }
 
   attachTactileHaptics(btnEl, hapticStyle = 'light') {
@@ -380,9 +535,66 @@ class GameEngine {
     btnEl.addEventListener('pointercancel', onPressEnd, { passive: true });
   }
 
+  loadAudioGradeFilter() {
+    try {
+      const saved = localStorage.getItem('ielts_audio_grade_filter');
+      return saved || 'all';
+    } catch (e) {
+      return 'all';
+    }
+  }
+
+  saveAudioGradeFilter() {
+    try {
+      localStorage.setItem('ielts_audio_grade_filter', this.audioGradeFilter || 'all');
+    } catch (e) {}
+  }
+
+  setAudioGradeFilter(gradeKey) {
+    this.audioGradeFilter = String(gradeKey || 'all').trim();
+    this.saveAudioGradeFilter();
+    this.usedQuestionIds.clear();
+    this.updateAudioGradeFilterUI();
+    this.updateGradeFilterUI();
+    if (this.currentGradeFilter === 'audio') {
+      this.startNewRound();
+    }
+  }
+
+  updateAudioGradeFilterUI() {
+    if (this.audioGradeFilterBar && this.audioGradeFilterBar.querySelectorAll) {
+      const chips = this.audioGradeFilterBar.querySelectorAll('.audio-grade-chip');
+      chips.forEach(chip => {
+        if (chip && chip.classList && typeof chip.getAttribute === 'function') {
+          const val = chip.getAttribute('data-audio-grade') || 'all';
+          chip.classList.toggle('active', val === (this.audioGradeFilter || 'all'));
+        }
+      });
+    }
+  }
+
   loadCustomExamBank() {
     try {
       const saved = localStorage.getItem('ielts_custom_exam_bank');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.slice(0, 60) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  saveCustomExamBank() {
+    try {
+      const capped = Array.isArray(this.customExamBank) ? this.customExamBank.slice(0, 60) : [];
+      this.customExamBank = capped;
+      localStorage.setItem('ielts_custom_exam_bank', JSON.stringify(capped));
+    } catch (e) {}
+  }
+
+  loadSavedExamsHistory() {
+    try {
+      const saved = localStorage.getItem('ielts_saved_exams_meta_v1');
       if (!saved) return [];
       const parsed = JSON.parse(saved);
       return Array.isArray(parsed) ? parsed : [];
@@ -391,9 +603,11 @@ class GameEngine {
     }
   }
 
-  saveCustomExamBank() {
+  saveSavedExamsHistory() {
     try {
-      localStorage.setItem('ielts_custom_exam_bank', JSON.stringify(this.customExamBank || []));
+      const list = Array.isArray(this.savedExamsHistory) ? this.savedExamsHistory.slice(0, 15) : [];
+      this.savedExamsHistory = list;
+      localStorage.setItem('ielts_saved_exams_meta_v1', JSON.stringify(list));
     } catch (e) {}
   }
 
@@ -446,6 +660,44 @@ class GameEngine {
     return `${y}-${m}-${d}`;
   }
 
+  getDefaultDailyQuests() {
+    return [
+      {
+        id: 'quest_correct_5',
+        icon: '🎯',
+        title: 'Khởi động chuẩn xác',
+        desc: 'Trả lời đúng 5 câu hỏi bất kỳ',
+        target: 5,
+        progress: 0,
+        rewardXP: 150,
+        claimed: false,
+        actionFilter: 'all'
+      },
+      {
+        id: 'quest_minigame_3',
+        icon: '🧩',
+        title: 'Chinh phục Kho Trò Chơi',
+        desc: 'Hoàn thành 3 câu Xếp câu, Nghe hoặc Phát âm',
+        target: 3,
+        progress: 0,
+        rewardXP: 200,
+        claimed: false,
+        actionFilter: 'voice_check'
+      },
+      {
+        id: 'quest_combo_3',
+        icon: '⚡',
+        title: 'Chuỗi phản xạ thần tốc',
+        desc: 'Đạt chuỗi Combo 3x trở lên trong ngày',
+        target: 3,
+        progress: 0,
+        rewardXP: 250,
+        claimed: false,
+        actionFilter: 'part5_speed'
+      }
+    ];
+  }
+
   loadDailyTracker() {
     const todayKey = this.getTodayDateKey();
     const defaultTracker = {
@@ -453,7 +705,9 @@ class GameEngine {
       todayCount: 0,
       dailyGoal: 30,
       streakDays: 1,
-      lastActiveDate: todayKey
+      lastActiveDate: todayKey,
+      activeDaysHistory: [todayKey],
+      quests: this.getDefaultDailyQuests()
     };
     try {
       const saved = localStorage.getItem('ielts_daily_tracker');
@@ -462,6 +716,10 @@ class GameEngine {
       const dailyGoal = Number(parsed.dailyGoal) || 30;
       let streakDays = Math.max(1, Number(parsed.streakDays) || 1);
       let todayCount = Number(parsed.todayCount) || 0;
+      let activeDaysHistory = Array.isArray(parsed.activeDaysHistory) ? [...parsed.activeDaysHistory] : [todayKey];
+      let quests = Array.isArray(parsed.quests) && parsed.quests.length === 3
+        ? parsed.quests
+        : this.getDefaultDailyQuests();
 
       if (parsed.dateKey !== todayKey) {
         if (parsed.dateKey === this.getYesterdayDateKey() && todayCount > 0) {
@@ -470,6 +728,14 @@ class GameEngine {
           streakDays = 1;
         }
         todayCount = 0;
+        quests = this.getDefaultDailyQuests();
+      }
+
+      if (!activeDaysHistory.includes(todayKey)) {
+        activeDaysHistory.push(todayKey);
+      }
+      if (activeDaysHistory.length > 14) {
+        activeDaysHistory = activeDaysHistory.slice(-14);
       }
 
       return {
@@ -477,7 +743,9 @@ class GameEngine {
         todayCount,
         dailyGoal,
         streakDays,
-        lastActiveDate: todayKey
+        lastActiveDate: todayKey,
+        activeDaysHistory,
+        quests
       };
     } catch (e) {
       return defaultTracker;
@@ -490,7 +758,7 @@ class GameEngine {
     } catch (e) {}
   }
 
-  recordDailyAnswer() {
+  recordDailyAnswer(explicitIsCorrect) {
     if (!this.dailyTracker) this.dailyTracker = this.loadDailyTracker();
     const todayKey = this.getTodayDateKey();
     if (this.dailyTracker.dateKey !== todayKey) {
@@ -501,10 +769,193 @@ class GameEngine {
       }
       this.dailyTracker.dateKey = todayKey;
       this.dailyTracker.todayCount = 0;
+      this.dailyTracker.quests = this.getDefaultDailyQuests();
     }
     this.dailyTracker.todayCount += 1;
+
+    if (!Array.isArray(this.dailyTracker.activeDaysHistory)) {
+      this.dailyTracker.activeDaysHistory = [];
+    }
+    if (!this.dailyTracker.activeDaysHistory.includes(todayKey)) {
+      this.dailyTracker.activeDaysHistory.push(todayKey);
+    }
+
+    const isCorrect = typeof explicitIsCorrect === 'boolean'
+      ? explicitIsCorrect
+      : (this.roundResults.length > 0 ? Boolean(this.roundResults[this.roundResults.length - 1]) : false);
+
+    const currentQ = this.questions && this.questions[this.currentIndex];
+    const isMiniGame = Boolean(
+      (currentQ && (currentQ.mode === 'sentence_order' || currentQ.mode === 'voice_check' || currentQ.isAudioQuiz || currentQ.isVoiceCheck)) ||
+      ['sentence_order', 'audio', 'voice_check'].includes(this.currentGradeFilter)
+    );
+
+    if (!Array.isArray(this.dailyTracker.quests) || this.dailyTracker.quests.length === 0) {
+      this.dailyTracker.quests = this.getDefaultDailyQuests();
+    }
+
+    this.dailyTracker.quests.forEach(quest => {
+      if (!quest) return;
+      if (quest.id === 'quest_correct_5' && isCorrect) {
+        quest.progress = Math.min(quest.target, (quest.progress || 0) + 1);
+      } else if (quest.id === 'quest_minigame_3' && isMiniGame && isCorrect) {
+        quest.progress = Math.min(quest.target, (quest.progress || 0) + 1);
+      } else if (quest.id === 'quest_combo_3') {
+        const bestCombo = Math.max(this.streak || 0, this.maxStreak || 0);
+        quest.progress = Math.min(quest.target, Math.max(quest.progress || 0, bestCombo));
+      }
+    });
+
     this.saveDailyTracker();
     this.updateDailyTrackerUI();
+  }
+
+  claimDailyQuest(questId) {
+    if (!this.dailyTracker || !Array.isArray(this.dailyTracker.quests)) return 0;
+    const quest = this.dailyTracker.quests.find(q => q && q.id === questId);
+    if (!quest || quest.claimed || (quest.progress || 0) < quest.target) return 0;
+
+    quest.claimed = true;
+    const reward = Number(quest.rewardXP) || 150;
+    this.score += reward;
+    this.updateScoreUI();
+    this.saveDailyTracker();
+    this.updateDailyTrackerUI();
+    this.renderDailyQuestModal();
+
+    if (typeof soundEngine !== 'undefined' && typeof soundEngine.playQuestClaim === 'function') {
+      soundEngine.playQuestClaim();
+    } else if (typeof soundEngine !== 'undefined') {
+      soundEngine.playVictory();
+    }
+    this.triggerHaptic('success');
+    this.launchConfetti();
+    return reward;
+  }
+
+  openDailyQuestModal() {
+    this.closeSettingsMenu();
+    this.closeMiniGamesMenu();
+    this.updateDailyTrackerUI();
+    this.renderDailyQuestModal();
+    if (this.dailyQuestModalOverlay && this.dailyQuestModalOverlay.classList) {
+      this.dailyQuestModalOverlay.classList.add('active');
+    }
+  }
+
+  closeDailyQuestModal() {
+    if (this.dailyQuestModalOverlay && this.dailyQuestModalOverlay.classList) {
+      this.dailyQuestModalOverlay.classList.remove('active');
+    }
+  }
+
+  renderDailyQuestModal() {
+    if (!this.dailyTracker) this.dailyTracker = this.loadDailyTracker();
+    const { streakDays, todayCount, activeDaysHistory, quests } = this.dailyTracker;
+
+    if (this.questModalStreakTitle) {
+      this.questModalStreakTitle.textContent = `Chuỗi ${streakDays} ngày liên tiếp`;
+    }
+    if (this.questModalStreakSub) {
+      this.questModalStreakSub.textContent = `Hôm nay đã luyện ${todayCount} câu • Hoàn thành nhiệm vụ để nhận thưởng XP!`;
+    }
+
+    // Render 7-day calendar strip (T2 -> CN)
+    if (this.streakWeekStrip) {
+      const dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+      const now = new Date();
+      const jsDay = now.getDay(); // 0 = Sun, 1 = Mon ...
+      const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay;
+      const activeSet = new Set(Array.isArray(activeDaysHistory) ? activeDaysHistory : []);
+      const todayKey = this.getTodayDateKey();
+
+      let weekHtml = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(now.getTime() + (mondayOffset + i) * 86400000);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dayNum = String(d.getDate()).padStart(2, '0');
+        const dKey = `${y}-${m}-${dayNum}`;
+        const isToday = dKey === todayKey;
+        const isActive = activeSet.has(dKey) || (isToday && todayCount > 0);
+        weekHtml += `
+          <div class="week-day-pill${isActive ? ' active-day' : ''}${isToday ? ' is-today' : ''}">
+            <span>${dayLabels[i]}</span>
+            <span class="week-day-icon">${isActive ? '🔥' : '⚪'}</span>
+          </div>
+        `;
+      }
+      this.streakWeekStrip.innerHTML = weekHtml;
+    }
+
+    const questList = Array.isArray(quests) ? quests : this.getDefaultDailyQuests();
+    const completedCount = questList.filter(q => (q.progress || 0) >= q.target).length;
+    if (this.questCompletedCounter) {
+      this.questCompletedCounter.textContent = `${completedCount}/${questList.length} hoàn thành`;
+    }
+
+    if (this.dailyQuestsList) {
+      this.dailyQuestsList.innerHTML = '';
+      questList.forEach(quest => {
+        const prog = Math.min(quest.target, quest.progress || 0);
+        const isDone = prog >= quest.target;
+        const isClaimed = Boolean(quest.claimed);
+        const pct = Math.min(100, Math.round((prog / Math.max(1, quest.target)) * 100));
+
+        const card = document.createElement('div');
+        card.className = `quest-item-card${isDone && !isClaimed ? ' quest-ready' : ''}${isClaimed ? ' quest-claimed' : ''}`;
+
+        let btnText = 'Làm ngay ➔';
+        let btnClass = 'btn-quest-action';
+        if (isClaimed) {
+          btnText = '✓ Đã nhận';
+          btnClass = 'btn-quest-action claimed';
+        } else if (isDone) {
+          btnText = `🎁 Nhận +${quest.rewardXP} XP`;
+          btnClass = 'btn-quest-action claimable';
+        }
+
+        card.innerHTML = `
+          <div class="quest-item-top">
+            <div class="quest-item-left">
+              <div class="quest-item-icon">${quest.icon || '🎯'}</div>
+              <div class="quest-item-texts">
+                <div class="quest-item-title">${quest.title}</div>
+                <div class="quest-item-desc">${quest.desc}</div>
+              </div>
+            </div>
+            <span class="quest-reward-tag">+${quest.rewardXP} XP</span>
+          </div>
+          <div class="quest-item-bottom">
+            <div class="quest-bar-wrap">
+              <div class="quest-bar-track">
+                <div class="quest-bar-fill" style="width: ${pct}%;"></div>
+              </div>
+              <span class="quest-bar-num">${prog}/${quest.target}</span>
+            </div>
+            <button type="button" class="${btnClass}" data-quest-id="${quest.id}">${btnText}</button>
+          </div>
+        `;
+
+        const actionBtn = card.querySelector ? card.querySelector('.btn-quest-action') : null;
+        if (actionBtn) {
+          actionBtn.addEventListener('click', () => {
+            if (isClaimed) return;
+            if (isDone) {
+              this.claimDailyQuest(quest.id);
+            } else {
+              this.triggerHaptic('light');
+              this.closeDailyQuestModal();
+              if (quest.actionFilter && quest.actionFilter !== this.currentGradeFilter) {
+                this.setGradeFilter(quest.actionFilter);
+              }
+            }
+          });
+        }
+
+        this.dailyQuestsList.appendChild(card);
+      });
+    }
   }
 
   setDailyGoal(newGoal) {
@@ -517,7 +968,17 @@ class GameEngine {
 
   updateDailyTrackerUI() {
     if (!this.dailyTracker) return;
-    const { todayCount, dailyGoal, streakDays } = this.dailyTracker;
+    const { todayCount, dailyGoal, streakDays, quests } = this.dailyTracker;
+    if (this.headerStreakDaysEl) {
+      this.headerStreakDaysEl.textContent = String(streakDays || 1);
+    }
+    const hasClaimable = Array.isArray(quests) && quests.some(q => q && !q.claimed && (q.progress || 0) >= q.target);
+    if (this.headerQuestNotifyDot) {
+      this.headerQuestNotifyDot.style.display = hasClaimable ? 'block' : 'none';
+    }
+    if (this.btnDailyStreakHeader && this.btnDailyStreakHeader.classList) {
+      this.btnDailyStreakHeader.classList.toggle('has-claimable', Boolean(hasClaimable));
+    }
     if (this.dailyStreakFireEl) {
       this.dailyStreakFireEl.textContent = `🔥 ${streakDays} ngày`;
     }
@@ -793,8 +1254,9 @@ class GameEngine {
     this.phoneticGuide = document.getElementById('phonetic-guide');
     this.academicHintPill = document.getElementById('academic-hint-pill');
 
-    // Audio Quiz Panel
+    // Audio Quiz Panel & Phân loại theo lớp cho Luyện Nghe
     this.audioQuizPanel = document.getElementById('audio-quiz-panel');
+    this.audioGradeFilterBar = document.getElementById('audio-grade-filter-bar');
     this.audioWaveBars = document.getElementById('audio-wave-bars');
     this.btnAudioQuizPlay = document.getElementById('btn-audio-quiz-play');
     this.btnAudioQuizSlow = document.getElementById('btn-audio-quiz-slow');
@@ -842,6 +1304,7 @@ class GameEngine {
     this.btnGradeModalClose = document.getElementById('btn-grade-modal-close');
 
     // Mastery Analytics & JSON Backup Modal
+    this.btnSentenceOrderMode = document.getElementById('btn-sentence-order-mode');
     this.btnAudioQuizMode = document.getElementById('btn-audio-quiz-mode');
     this.btnMasteryStats = document.getElementById('btn-mastery-stats');
     this.masteryModalOverlay = document.getElementById('mastery-modal-overlay');
@@ -914,24 +1377,81 @@ class GameEngine {
     this.customExamCountBadge = document.getElementById('custom-exam-count-badge');
     this.iosHapticTrigger = document.getElementById('ios-haptic-trigger');
 
+    // Mini Games Menu (Gom Sắp xếp câu, Luyện nghe, Luyện phát âm & các game mới sau này)
+    this.miniGamesMenuWrapper = document.getElementById('mini-games-menu-wrapper');
+    this.btnMiniGamesToggle = document.getElementById('btn-mini-games-toggle');
+    this.miniGamesDropdownMenu = document.getElementById('mini-games-dropdown-menu');
+    this.btnVoiceCheckMode = document.getElementById('btn-voice-check-mode');
+    this.badgeGameSentenceOrder = document.getElementById('badge-game-sentence-order');
+    this.badgeGameAudioQuiz = document.getElementById('badge-game-audio-quiz');
+    this.badgeGameVoiceCheck = document.getElementById('badge-game-voice-check');
+
+    // Daily Quests & Streak Header + Modal
+    this.btnDailyStreakHeader = document.getElementById('btn-daily-streak-header');
+    this.headerStreakDaysEl = document.getElementById('header-streak-days');
+    this.headerQuestNotifyDot = document.getElementById('header-quest-notify-dot');
+    this.dailyQuestModalOverlay = document.getElementById('daily-quest-modal-overlay');
+    this.btnDailyQuestClose = document.getElementById('btn-daily-quest-close');
+    this.questModalStreakTitle = document.getElementById('quest-modal-streak-title');
+    this.questModalStreakSub = document.getElementById('quest-modal-streak-sub');
+    this.streakWeekStrip = document.getElementById('streak-week-strip');
+    this.questCompletedCounter = document.getElementById('quest-completed-counter');
+    this.dailyQuestsList = document.getElementById('daily-quests-list');
+    this.btnQuestContinue = document.getElementById('btn-quest-continue');
+
     // Header actions & Settings Menu
     this.settingsMenuWrapper = document.getElementById('settings-menu-wrapper');
     this.btnSettingsToggle = document.getElementById('btn-settings-toggle');
     this.settingsDropdownMenu = document.getElementById('settings-dropdown-menu');
     this.settingsSoundBadge = document.getElementById('settings-sound-badge');
+    this.settingsHapticBadge = document.getElementById('settings-haptic-badge');
     this.settingsThemeBadge = document.getElementById('settings-theme-badge');
     this.btnThemeToggle = document.getElementById('btn-theme-toggle');
     this.themeIconSvg = document.getElementById('theme-icon-svg');
     this.btnSoundToggle = document.getElementById('btn-sound-toggle');
     this.soundIconSvg = document.getElementById('sound-icon-svg');
+    this.btnHapticToggle = document.getElementById('btn-haptic-toggle');
+    this.hapticIconSvg = document.getElementById('haptic-icon-svg');
     this.btnViewToggle = document.getElementById('btn-view-toggle');
   }
 
   bindEvents() {
+    if (this.btnDailyStreakHeader) {
+      this.btnDailyStreakHeader.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.openDailyQuestModal();
+      });
+    }
+    if (this.btnDailyQuestClose) {
+      this.btnDailyQuestClose.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.closeDailyQuestModal();
+      });
+    }
+    if (this.btnQuestContinue) {
+      this.btnQuestContinue.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.closeDailyQuestModal();
+      });
+    }
+    if (this.dailyQuestModalOverlay) {
+      this.dailyQuestModalOverlay.addEventListener('click', (e) => {
+        if (e.target === this.dailyQuestModalOverlay) this.closeDailyQuestModal();
+      });
+    }
+    if (this.btnMiniGamesToggle) {
+      this.btnMiniGamesToggle.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.triggerHaptic('light');
+        this.closeSettingsMenu();
+        this.toggleMiniGamesMenu();
+      });
+    }
     if (this.btnSettingsToggle) {
       this.btnSettingsToggle.addEventListener('click', (e) => {
         e.stopPropagation();
         this.triggerHaptic('light');
+        this.closeMiniGamesMenu();
         this.toggleSettingsMenu();
       });
     }
@@ -940,6 +1460,11 @@ class GameEngine {
         if (this.settingsMenuWrapper && this.settingsDropdownMenu && this.settingsDropdownMenu.classList && this.settingsDropdownMenu.classList.contains('open')) {
           if (typeof this.settingsMenuWrapper.contains === 'function' && !this.settingsMenuWrapper.contains(e.target)) {
             this.closeSettingsMenu();
+          }
+        }
+        if (this.miniGamesMenuWrapper && this.miniGamesDropdownMenu && this.miniGamesDropdownMenu.classList && this.miniGamesDropdownMenu.classList.contains('open')) {
+          if (typeof this.miniGamesMenuWrapper.contains === 'function' && !this.miniGamesMenuWrapper.contains(e.target)) {
+            this.closeMiniGamesMenu();
           }
         }
       });
@@ -954,11 +1479,38 @@ class GameEngine {
       this.triggerHaptic('light');
       this.toggleSound();
     });
+    if (this.btnHapticToggle) {
+      this.btnHapticToggle.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.toggleHaptic();
+      });
+    }
     if (this.btnViewToggle) {
       this.btnViewToggle.addEventListener('click', () => this.toggleViewMode());
     }
+    if (this.btnSentenceOrderMode) {
+      this.btnSentenceOrderMode.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.triggerHaptic('light');
+        this.closeMiniGamesMenu();
+        this.toggleSentenceOrderMode();
+      });
+    }
     if (this.btnAudioQuizMode) {
-      this.btnAudioQuizMode.addEventListener('click', () => this.toggleAudioQuizMode());
+      this.btnAudioQuizMode.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.triggerHaptic('light');
+        this.closeMiniGamesMenu();
+        this.toggleAudioQuizMode();
+      });
+    }
+    if (this.btnVoiceCheckMode) {
+      this.btnVoiceCheckMode.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.triggerHaptic('light');
+        this.closeMiniGamesMenu();
+        this.toggleVoiceCheckMode();
+      });
     }
     if (this.btnMasteryStats) {
       this.btnMasteryStats.addEventListener('click', () => {
@@ -967,7 +1519,7 @@ class GameEngine {
       });
     }
     if (this.dailyGoalPill) {
-      this.dailyGoalPill.addEventListener('click', () => this.openMasteryModal());
+      this.dailyGoalPill.addEventListener('click', () => this.openDailyQuestModal());
     }
     if (this.btnVictoryMastery) {
       this.btnVictoryMastery.addEventListener('click', () => this.openMasteryModal());
@@ -1035,6 +1587,18 @@ class GameEngine {
         card.addEventListener('click', () => {
           const targetLv = (card && typeof card.getAttribute === 'function') ? (card.getAttribute('data-kpi-filter') || 'all') : 'all';
           this.setMasteryFilterTab(targetLv);
+        });
+      });
+    }
+
+    if (this.audioGradeFilterBar && this.audioGradeFilterBar.querySelectorAll) {
+      const audioChips = this.audioGradeFilterBar.querySelectorAll('.audio-grade-chip');
+      audioChips.forEach(chip => {
+        chip.addEventListener('click', (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.triggerHaptic('light');
+          const gKey = (chip && typeof chip.getAttribute === 'function') ? (chip.getAttribute('data-audio-grade') || 'all') : 'all';
+          this.setAudioGradeFilter(gKey);
         });
       });
     }
@@ -1112,13 +1676,18 @@ class GameEngine {
     this.bindExamImporterEvents();
     this.bindKeyboardAndSwipeEvents();
 
-    // Mở khóa Web Audio Context khi user chạm lần đầu
+    // Mở khóa Web Audio Context & Kênh Media Playback (phát tiếng ngay cả khi gạt nút Tắt chuông điện thoại)
     const unlockAudio = () => {
       soundEngine.init();
+      if (typeof soundEngine.unlockMediaChannel === 'function') {
+        soundEngine.unlockMediaChannel();
+      }
       document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('pointerdown', unlockAudio);
       document.removeEventListener('click', unlockAudio);
     };
-    document.addEventListener('touchstart', unlockAudio, { once: true });
+    document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+    document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
     document.addEventListener('click', unlockAudio, { once: true });
   }
 
@@ -1186,6 +1755,27 @@ class GameEngine {
         }
 
         if (this.isAnsweringLocked) return;
+
+        if (q.mode === 'sentence_order' && !q.isAudioQuiz) {
+          if (e.key === 'Backspace') {
+            const undoBtn = document.getElementById('btn-sentence-undo');
+            if (undoBtn && undoBtn.click) undoBtn.click();
+            return;
+          }
+          if (e.key === 'Escape') {
+            const clearBtn = document.getElementById('btn-sentence-clear');
+            if (clearBtn && clearBtn.click) clearBtn.click();
+            return;
+          }
+          const numIdx = parseInt(e.key, 10) - 1;
+          if (!isNaN(numIdx) && numIdx >= 0 && numIdx < 8 && this.answersContainer && this.answersContainer.querySelectorAll) {
+            const tiles = Array.from(this.answersContainer.querySelectorAll('.word-order-tile-btn'));
+            if (tiles[numIdx] && !tiles[numIdx].disabled && (!tiles[numIdx].classList || !tiles[numIdx].classList.contains('used'))) {
+              if (tiles[numIdx].click) tiles[numIdx].click();
+            }
+          }
+          return;
+        }
 
         if (q.mode === 'letter_fill' && !q.isAudioQuiz) {
           if (e.key === 'Backspace') {
@@ -1256,6 +1846,34 @@ class GameEngine {
     }
 
     this.updateSoundIcon(soundEngine.isMuted);
+  }
+
+  toggleMiniGamesMenu() {
+    if (!this.miniGamesDropdownMenu || !this.miniGamesDropdownMenu.classList) return;
+    const isOpen = this.miniGamesDropdownMenu.classList.toggle('open');
+    if (this.btnMiniGamesToggle && this.btnMiniGamesToggle.classList) {
+      this.btnMiniGamesToggle.classList.toggle('active-gear', isOpen);
+      if (typeof this.btnMiniGamesToggle.setAttribute === 'function') {
+        this.btnMiniGamesToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      }
+    }
+    if (typeof this.miniGamesDropdownMenu.setAttribute === 'function') {
+      this.miniGamesDropdownMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    }
+  }
+
+  closeMiniGamesMenu() {
+    if (!this.miniGamesDropdownMenu || !this.miniGamesDropdownMenu.classList) return;
+    this.miniGamesDropdownMenu.classList.remove('open');
+    if (typeof this.miniGamesDropdownMenu.setAttribute === 'function') {
+      this.miniGamesDropdownMenu.setAttribute('aria-hidden', 'true');
+    }
+    if (this.btnMiniGamesToggle && this.btnMiniGamesToggle.classList) {
+      this.btnMiniGamesToggle.classList.remove('active-gear');
+      if (typeof this.btnMiniGamesToggle.setAttribute === 'function') {
+        this.btnMiniGamesToggle.setAttribute('aria-expanded', 'false');
+      }
+    }
   }
 
   toggleSettingsMenu() {
@@ -1343,12 +1961,46 @@ class GameEngine {
   }
 
   getFilteredBank() {
-    if (!this.currentGradeFilter || this.currentGradeFilter === 'all' || this.currentGradeFilter === 'audio') {
+    if (!this.currentGradeFilter || this.currentGradeFilter === 'all') {
       return [...IELTS_VOCAB_BANK];
+    }
+    // Phần Luyện Nghe có phân loại theo Lớp (Lớp 6 -> Lớp 12, TOEIC, IELTS 7+)
+    if (this.currentGradeFilter === 'audio') {
+      const subFilter = this.audioGradeFilter || 'all';
+      if (subFilter === 'all') {
+        return [...IELTS_VOCAB_BANK];
+      }
+      let audioPool = [];
+      if (subFilter.startsWith('g')) {
+        const gNum = parseInt(subFilter.replace('g', ''), 10);
+        audioPool = IELTS_VOCAB_BANK.filter(q => q.grade === gNum);
+      } else if (subFilter === 'toeic') {
+        audioPool = IELTS_VOCAB_BANK.filter(q => q.category === 'toeic' || q.topic_category === 'toeic' || (q.id && q.id.startsWith('toeic_')));
+      } else if (['toeic400', 'toeic500', 'toeic600', 'toeic700'].includes(subFilter)) {
+        audioPool = IELTS_VOCAB_BANK.filter(q => q.toeic_tier === subFilter);
+      } else if (subFilter === 'band7') {
+        audioPool = IELTS_VOCAB_BANK.filter(q => parseFloat(q.band) >= 7.0);
+      } else if (subFilter === 'ielts') {
+        audioPool = IELTS_VOCAB_BANK.filter(q => q.category !== 'toeic' && q.topic_category !== 'toeic' && (!q.id || !q.id.startsWith('toeic_')));
+      }
+      return audioPool.length > 0 ? audioPool : [...IELTS_VOCAB_BANK];
     }
     if (this.currentGradeFilter === 'custom_exam') {
       if (this.customExamBank && this.customExamBank.length > 0) {
-        return [...this.customExamBank];
+        return this.customExamBank.slice(0, 60).map((q, idx) => {
+          const normalizedMode = (q.mode === 'letter_fill' && q.sentence) ? 'sentence_cloze' : (q.mode || 'sentence_cloze');
+          const base = {
+            ...q,
+            category: 'custom_exam',
+            is_custom_exam: true,
+            exam_verbatim: true,
+            mode: normalizedMode
+          };
+          if (normalizedMode === 'sentence_order' && (!Array.isArray(base.wordChunks) || base.wordChunks.length === 0)) {
+            return this.buildSentenceOrderVariant(base, idx);
+          }
+          return base;
+        });
       }
       return [...IELTS_VOCAB_BANK];
     }
@@ -1435,6 +2087,139 @@ class GameEngine {
     }
   }
 
+  buildSentenceOrderVariant(baseQ, idx) {
+    const correctOpt = (baseQ.options && baseQ.options[baseQ.correct]) || baseQ.target_word || '';
+    const targetWord = String(baseQ.target_word || correctOpt || 'vocabulary').trim();
+    const cleanTarget = targetWord.replace(/^to\s+/i, '').trim();
+    let rawSentence = '';
+
+    if (baseQ.sentence && /_{2,}/.test(baseQ.sentence)) {
+      rawSentence = String(baseQ.sentence).replace(/_{2,}/g, correctOpt).trim();
+    } else if (baseQ.real_exam_sentence) {
+      rawSentence = String(baseQ.real_exam_sentence).trim();
+    } else if (baseQ.sentence) {
+      rawSentence = String(baseQ.sentence).trim();
+    } else {
+      rawSentence = `We should practice ${cleanTarget} every day.`;
+    }
+
+    // Dọn dẹp khoảng trắng thừa & ngoặc kép
+    rawSentence = rawSentence.replace(/^["'“”]+|["'“”]+$/g, '').replace(/\s+/g, ' ').trim();
+
+    // Tách dấu câu cuối cùng (., !, ?)
+    let sentencePunctuation = '.';
+    const punctMatch = rawSentence.match(/([.!?]+)$/);
+    if (punctMatch) {
+      sentencePunctuation = punctMatch[1].charAt(0);
+      rawSentence = rawSentence.slice(0, -punctMatch[0].length).trim();
+    }
+
+    // Giảm độ khó câu: Nếu câu gốc dài (> 8 từ) và không phải đề thi nguyên bản, rút gọn về mệnh đề ngắn (4-8 từ) hoặc câu mẫu ngắn gọn dễ ghép
+    const targetLower = cleanTarget.toLowerCase();
+    let words = rawSentence.split(/\s+/).filter(Boolean);
+
+    if (words.length > 8 && /[,;]/.test(rawSentence)) {
+      const clauses = rawSentence.split(/[,;]/).map(c => c.trim()).filter(Boolean);
+      const shortClause = clauses.find(c => {
+        const wLen = c.split(/\s+/).length;
+        return targetLower && c.toLowerCase().includes(targetLower) && wLen >= 4 && wLen <= 8;
+      });
+      if (shortClause) {
+        rawSentence = shortClause.charAt(0).toUpperCase() + shortClause.slice(1);
+        words = rawSentence.split(/\s+/).filter(Boolean);
+      }
+    }
+
+    let chunks = [];
+    // Nếu câu vẫn dài hơn 8 từ (câu học thuật phức tạp), tạo câu ngắn 4 cụm từ cực dễ hiểu xoay quanh từ mục tiêu
+    if (words.length > 8 && !baseQ.is_custom_exam && baseQ.category !== 'custom_exam') {
+      const pos = this.getWordPOS(cleanTarget, baseQ);
+      if (pos === '(v)' || pos === '(v.phr)') {
+        chunks = ['We should', cleanTarget.toLowerCase(), 'this important task', 'every day'];
+      } else if (pos === '(adj)') {
+        chunks = ['This is', `a very ${cleanTarget.toLowerCase()}`, 'solution for', 'our team'];
+      } else if (pos === '(adv)') {
+        chunks = ['Our team', 'completed the work', cleanTarget.toLowerCase(), 'yesterday'];
+      } else if (pos === '(prep)') {
+        const tIdx = words.findIndex(w => w.toLowerCase().replace(/[^a-z]/g, '') === targetLower);
+        if (tIdx >= 0) {
+          const start = Math.max(0, Math.min(words.length - 6, tIdx - 2));
+          const subWords = words.slice(start, start + 6);
+          if (subWords.length > 0) {
+            subWords[0] = subWords[0].charAt(0).toUpperCase() + subWords[0].slice(1);
+            words = subWords;
+          }
+        }
+      } else {
+        chunks = ['Our team', 'Always needs', cleanTarget.toLowerCase(), 'for success'];
+        chunks[1] = 'always needs';
+      }
+    }
+
+    // Nếu chưa có chunks cố định, gom các từ trong câu thành TỐI ĐA 4 MẢNH GHÉP (4 chunks) ngắn gọn, dễ nhìn
+    if (chunks.length === 0) {
+      chunks = [...words];
+      while (chunks.length > 4) {
+        let minPairIdx = 0;
+        let minLen = Infinity;
+        for (let j = 0; j < chunks.length - 1; j++) {
+          const combinedLen = chunks[j].length + chunks[j + 1].length;
+          if (combinedLen < minLen) {
+            minLen = combinedLen;
+            minPairIdx = j;
+          }
+        }
+        chunks.splice(minPairIdx, 2, `${chunks[minPairIdx]} ${chunks[minPairIdx + 1]}`);
+      }
+    }
+
+    let shuffledChunks = shuffleArray([...chunks]);
+    if (chunks.length > 1 && shuffledChunks.join(' ') === chunks.join(' ')) {
+      shuffledChunks = [...chunks.slice(1), chunks[0]];
+    }
+
+    return {
+      ...baseQ,
+      isSentenceOrder: true,
+      mode: 'sentence_order',
+      targetSentence: `${chunks.join(' ')}${sentencePunctuation}`,
+      sentencePunctuation,
+      wordChunks: chunks,
+      shuffledChunks,
+      prompt: '🧩 Chạm các cụm từ để ghép thành câu tiếng Anh hoàn chỉnh:'
+    };
+  }
+
+  buildVoiceCheckVariant(baseQ, idx) {
+    const correctOpt = (baseQ.options && baseQ.options[baseQ.correct]) || baseQ.target_word || '';
+    const targetWord = String(baseQ.target_word || correctOpt || 'vocabulary').trim();
+    const cleanTarget = targetWord.replace(/^to\s+/i, '').trim();
+    const pos = this.getWordPOS(cleanTarget, baseQ);
+
+    let voicePhrase = '';
+    if (pos === '(v)' || pos === '(v.phr)') {
+      voicePhrase = `We should ${cleanTarget.toLowerCase()} every day`;
+    } else if (pos === '(adj)') {
+      voicePhrase = `This is a ${cleanTarget.toLowerCase()} solution`;
+    } else if (pos === '(adv)') {
+      voicePhrase = `They work ${cleanTarget.toLowerCase()} together`;
+    } else {
+      voicePhrase = `We need ${cleanTarget.toLowerCase()} for success`;
+    }
+
+    const voiceTokens = voicePhrase.split(/\s+/).filter(Boolean);
+
+    return {
+      ...baseQ,
+      isVoiceCheck: true,
+      mode: 'voice_check',
+      voiceTargetWord: cleanTarget,
+      voicePhrase,
+      voiceTokens,
+      prompt: '🎙️ Phát âm chuẩn từ vựng hoặc cụm từ ngắn dưới đây:'
+    };
+  }
+
   generateAdaptiveQueue(pool) {
     if (!pool || pool.length === 0) return [];
 
@@ -1450,6 +2235,31 @@ class GameEngine {
     const workingPool = availableQuestions.length >= this.totalQuestionsPerRound 
       ? availableQuestions 
       : [...pool];
+
+    // Nếu người học đang làm "Đề Thi Tự Nhập" (custom_exam):
+    // Bê nguyên câu trong đề thành game (tối đa 60 câu/đề) + kết hợp thuật toán Adaptive ưu tiên các câu học sinh từng làm sai!
+    if (this.currentGradeFilter === 'custom_exam' && this.customExamBank && this.customExamBank.length > 0) {
+      const weakSet = new Set(this.weakWordIds || []);
+      const adaptiveMissed = [];
+      const regularOrder = [];
+
+      workingPool.forEach(q => {
+        const prof = this.getWordProfile(q);
+        const srs = this.srsMatrix && this.srsMatrix[q.id];
+        const hasFailedBefore = weakSet.has(q.id) || (prof && prof.failCount > 0) || (srs && srs.failCount > 0) || (q.adaptiveFailCount && q.adaptiveFailCount > 0);
+        if (hasFailedBefore) {
+          adaptiveMissed.push(q);
+        } else {
+          regularOrder.push(q);
+        }
+      });
+
+      adaptiveMissed.sort((a, b) => this.calculatePriorityScore(b) - this.calculatePriorityScore(a));
+      const combinedExamQueue = [...adaptiveMissed, ...regularOrder].slice(0, Math.min(workingPool.length, this.maxQuestionsPerExam || 60));
+      combinedExamQueue.forEach(q => this.usedQuestionIds.add(q.id));
+      this.saveUsedQuestionIds();
+      return combinedExamQueue;
+    }
 
     // Phân loại câu hỏi theo 3 tầng nhận thức tự nhiên (Cognitive Progression Tiers):
     // Tầng 1 (Khởi động - Nhận diện & Mặt chữ): meaning_match, letter_fill
@@ -1523,6 +2333,16 @@ class GameEngine {
       return selected.map((q, idx) => this.buildAudioQuizVariant(q, pool, idx));
     }
 
+    // Nếu người học đang chọn Game Sắp Xếp Từ Thành Câu (Sentence Builder)
+    if (this.currentGradeFilter === 'sentence_order') {
+      return selected.map((q, idx) => this.buildSentenceOrderVariant(q, idx));
+    }
+
+    // Nếu người học đang chọn Game Luyện Phát Âm Chấm Điểm Giọng Nói (Voice Check)
+    if (this.currentGradeFilter === 'voice_check') {
+      return selected.map((q, idx) => this.buildVoiceCheckVariant(q, idx));
+    }
+
     return selected;
   }
 
@@ -1551,8 +2371,11 @@ class GameEngine {
     if (this.gradeModalOverlay) this.gradeModalOverlay.classList.remove('active');
     if (this.masteryModalOverlay) this.masteryModalOverlay.classList.remove('active');
     if (this.examImportModalOverlay) this.examImportModalOverlay.classList.remove('active');
+    if (this.dailyQuestModalOverlay) this.dailyQuestModalOverlay.classList.remove('active');
 
-    this.activeRoundTimeLimit = this.currentGradeFilter === 'part5_speed' ? 12.0 : this.maxTimeSeconds;
+    this.activeRoundTimeLimit = this.currentGradeFilter === 'part5_speed'
+      ? 12.0
+      : ((this.currentGradeFilter === 'sentence_order' || this.currentGradeFilter === 'voice_check') ? 30.0 : this.maxTimeSeconds);
 
     const pool = this.getFilteredBank();
     this.questions = this.generateAdaptiveQueue(pool);
@@ -1647,17 +2470,27 @@ class GameEngine {
       collocation: '🧩 Ghép Collocation',
       word_class: '🏷️ Phân biệt từ loại',
       preposition: '🎯 Chọn giới từ',
-      sentence_cloze: '✍️ Điền vào câu'
+      sentence_cloze: '✍️ Điền vào câu',
+      sentence_order: '🧩 Sắp xếp câu',
+      voice_check: '🎙️ Luyện phát âm'
     };
     
     if (q.isAudioQuiz) {
       this.modeBadge.innerHTML = `🎧 Luyện Nghe AI`;
       this.modeBadge.style.background = `rgba(56, 189, 248, 0.22)`;
       this.modeBadge.style.color = `#38bdf8`;
+    } else if (q.mode === 'voice_check' || q.isVoiceCheck) {
+      this.modeBadge.innerHTML = `🎙️ Luyện Phát Âm`;
+      this.modeBadge.style.background = `rgba(16, 185, 129, 0.22)`;
+      this.modeBadge.style.color = `#34d399`;
     } else if (q.isRecallVariant) {
       this.modeBadge.innerHTML = `🔁 Active Recall`;
       this.modeBadge.style.background = `rgba(236, 72, 153, 0.25)`;
       this.modeBadge.style.color = `#f472b6`;
+    } else if (q.category === 'custom_exam' || q.is_custom_exam) {
+      this.modeBadge.innerHTML = `📄 Câu Hỏi Đề Thi`;
+      this.modeBadge.style.background = `rgba(16, 185, 129, 0.22)`;
+      this.modeBadge.style.color = `#34d399`;
     } else {
       this.modeBadge.textContent = modeLabels[q.mode] || 'IELTS Quiz';
       this.modeBadge.style.background = `var(--bg-pill-glass)`;
@@ -1668,7 +2501,7 @@ class GameEngine {
     let hasVisibleVocabImage = false;
     if (this.vocabImageContainer && this.vocabImg) {
       const imgUrl = (qMeta && qMeta.imgUrl) || this.resolveQuestionImageUrl(q);
-      if (imgUrl) {
+      if (imgUrl && q.mode !== 'voice_check') {
         if (this.vocabImg.src !== imgUrl) {
           this.vocabImg.src = imgUrl;
         }
@@ -1692,6 +2525,29 @@ class GameEngine {
       } else {
         this.questionCard.classList.remove('is-letter-fill');
       }
+      if (!q.isAudioQuiz && q.mode === 'sentence_order') {
+        this.questionCard.classList.add('is-sentence-order');
+      } else {
+        this.questionCard.classList.remove('is-sentence-order');
+      }
+      if (!q.isAudioQuiz && q.mode === 'voice_check') {
+        this.questionCard.classList.add('is-voice-check');
+      } else {
+        this.questionCard.classList.remove('is-voice-check');
+      }
+    }
+
+    if (this.letterBoxContainer && this.letterBoxContainer.classList) {
+      if (!q.isAudioQuiz && q.mode === 'sentence_order') {
+        this.letterBoxContainer.classList.add('sentence-order-tray');
+      } else {
+        this.letterBoxContainer.classList.remove('sentence-order-tray');
+      }
+      if (!q.isAudioQuiz && q.mode === 'voice_check') {
+        this.letterBoxContainer.classList.add('voice-phrase-tray');
+      } else {
+        this.letterBoxContainer.classList.remove('voice-phrase-tray');
+      }
     }
 
     if (this.audioQuizPanel) {
@@ -1713,6 +2569,23 @@ class GameEngine {
           speechEngine.speakWord(wordToPlay, 0.92);
         }
       }, 150);
+    } else if (q.mode === 'voice_check') {
+      this.promptText.textContent = q.prompt || '🎙️ Phát âm chuẩn từ vựng hoặc cụm từ dưới đây:';
+      this.letterBoxContainer.style.display = 'flex';
+      const targetWord = q.voiceTargetWord || q.target_word || 'vocabulary';
+      const phoneticStr = q.phonetic ? `<span class="voice-ipa-line">${q.phonetic}</span>` : '';
+      this.questionMainText.innerHTML = `
+        <span class="voice-word-hero">${targetWord}</span>
+        ${phoneticStr}
+        <span class="voice-vn-line">💡 “${q.vietnamese}”</span>
+      `;
+      this.renderInteractiveVoiceCheck(q);
+    } else if (q.mode === 'sentence_order') {
+      this.promptText.textContent = q.prompt || '🧩 Chạm các cụm từ để ghép thành câu đúng:';
+      this.letterBoxContainer.style.display = 'flex';
+      const targetWordHint = q.target_word ? `<strong class="sentence-hint-target">${q.target_word}</strong>: ` : '';
+      this.questionMainText.innerHTML = `<span class="sentence-order-meaning-cue">💡 ${targetWordHint}“${q.vietnamese}”</span>`;
+      this.renderInteractiveSentenceOrder(q);
     } else if (q.mode === 'letter_fill') {
       this.promptText.textContent = 'Chạm các chữ cái bên dưới để hoàn thành từ:';
       this.letterBoxContainer.style.display = 'flex';
@@ -1744,6 +2617,11 @@ class GameEngine {
     if (this.academicHintPill) {
       if (q.isAudioQuiz) {
         this.academicHintPill.innerHTML = `🎧 Luyện phản xạ Nghe phát âm chuẩn`;
+      } else if (q.mode === 'voice_check') {
+        this.academicHintPill.innerHTML = `🎙️ Đạt ≥ 65% độ chuẩn để qua màn`;
+      } else if (q.mode === 'sentence_order') {
+        const chunkLen = Array.isArray(q.wordChunks) ? q.wordChunks.length : 5;
+        this.academicHintPill.innerHTML = `🧩 Ghép ${chunkLen} cụm từ thành câu`;
       } else if (q.mode === 'letter_fill') {
         const missLen = Array.isArray(q.missing) ? q.missing.length : (q.missing ? q.missing.length : 1);
         this.academicHintPill.innerHTML = `💡 Thiếu ${missLen} chữ cái`;
@@ -1767,7 +2645,7 @@ class GameEngine {
     if (!this.questionMainText || !this.questionMainText.classList) return;
     this.questionMainText.classList.remove('text-scale-xl', 'text-scale-md', 'text-scale-sm', 'text-scale-xs');
 
-    if (q.isAudioQuiz) {
+    if (q.isAudioQuiz || q.mode === 'sentence_order' || q.mode === 'voice_check') {
       this.questionMainText.classList.add('text-scale-sm');
       return;
     }
@@ -1822,7 +2700,9 @@ class GameEngine {
       } catch (e) {}
     }
     if (this.answersContainer.querySelectorAll) {
-      const all = Array.from(this.answersContainer.querySelectorAll('.letter-tile-btn'));
+      const letterBtns = Array.from(this.answersContainer.querySelectorAll('.letter-tile-btn') || []);
+      const wordBtns = Array.from(this.answersContainer.querySelectorAll('.word-order-tile-btn') || []);
+      const all = [...letterBtns, ...wordBtns];
       return all.find(b => (b.dataset && b.dataset.tileId === tileId) || b.id === tileId) || null;
     }
     return null;
@@ -2001,9 +2881,7 @@ class GameEngine {
         b.classList.remove('wrong-word');
         b.classList.add('correct-word');
       });
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate([35]); } catch (e) {}
-      }
+      this.triggerHaptic('success');
 
       const timeTaken = (Date.now() - this.questionStartTime) / 1000;
       this.responseTimes.push(timeTaken);
@@ -2027,9 +2905,7 @@ class GameEngine {
         b.classList.add('filled', 'wrong-word');
       });
 
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate([60, 50, 70]); } catch (e) {}
-      }
+      this.triggerHaptic('error');
       this.handleWrongAnswer(false);
       const timeTaken = (Date.now() - this.questionStartTime) / 1000;
       this.responseTimes.push(timeTaken);
@@ -2042,6 +2918,518 @@ class GameEngine {
       // Với câu sai: Hiện feedback drawer giải thích và đợi học sinh bấm nút "Tiếp tục"
       this.showFeedbackDrawer(false, q, false, retentionRate);
     }
+  }
+
+  renderInteractiveSentenceOrder(q) {
+    this.answersContainer.innerHTML = '';
+    this.letterBoxContainer.innerHTML = '';
+
+    const chunks = Array.isArray(q.wordChunks) && q.wordChunks.length > 0
+      ? q.wordChunks
+      : ['Students', 'should', 'practice', q.target_word || 'vocabulary', 'daily'];
+    const shuffled = Array.isArray(q.shuffledChunks) && q.shuffledChunks.length === chunks.length
+      ? q.shuffledChunks
+      : shuffleArray([...chunks]);
+
+    if (this.letterBoxContainer && this.letterBoxContainer.classList) {
+      this.letterBoxContainer.classList.remove('word-len-short', 'word-len-medium', 'word-len-long', 'word-len-xlong');
+      this.letterBoxContainer.classList.add('sentence-order-tray');
+    }
+
+    const slotBoxes = [];
+    const updateActiveSlotHighlight = () => {
+      let foundFirstEmpty = false;
+      slotBoxes.forEach(s => {
+        if (!s.classList) return;
+        if (!foundFirstEmpty && s.classList.contains('empty')) {
+          s.classList.add('active-next-slot');
+          foundFirstEmpty = true;
+        } else {
+          s.classList.remove('active-next-slot');
+        }
+      });
+    };
+
+    chunks.forEach((chunkText, idx) => {
+      const slot = document.createElement('div');
+      slot.className = 'sentence-slot-box empty';
+      slot.textContent = '___';
+      if (!slot.dataset) slot.dataset = {};
+      slot.dataset.slotIndex = String(idx);
+      slot.dataset.placeholder = '___';
+      slotBoxes.push(slot);
+
+      slot.addEventListener('click', () => {
+        if (this.isAnsweringLocked) return;
+        if (slot.classList.contains('filled')) {
+          this.triggerHaptic('light');
+          const tileId = slot.dataset.tileId;
+          slot.textContent = slot.dataset.placeholder || '___';
+          slot.className = 'sentence-slot-box empty';
+          delete slot.dataset.tileId;
+          delete slot.dataset.chunkText;
+
+          if (tileId) {
+            const tileBtn = this.findTileButton(tileId);
+            if (tileBtn) {
+              tileBtn.classList.remove('used');
+              tileBtn.disabled = false;
+            }
+          }
+          updateActiveSlotHighlight();
+          soundEngine.playTick(false);
+        }
+      });
+
+      this.letterBoxContainer.appendChild(slot);
+    });
+
+    if (q.sentencePunctuation) {
+      const punctEl = document.createElement('span');
+      punctEl.className = 'sentence-punct-end';
+      punctEl.textContent = q.sentencePunctuation;
+      this.letterBoxContainer.appendChild(punctEl);
+    }
+
+    updateActiveSlotHighlight();
+
+    const tilesContainer = document.createElement('div');
+    tilesContainer.className = 'word-order-tiles-container';
+
+    const tilesGrid = document.createElement('div');
+    tilesGrid.className = 'word-order-tiles-grid';
+
+    shuffled.forEach((chunkStr, idx) => {
+      const tileBtn = document.createElement('button');
+      tileBtn.type = 'button';
+      tileBtn.className = 'word-order-tile-btn';
+      tileBtn.innerHTML = `<span class="word-tile-text">${chunkStr}</span>`;
+      if (!tileBtn.dataset) tileBtn.dataset = {};
+      tileBtn.dataset.tileId = `word-tile-${idx}`;
+      tileBtn.dataset.chunk = chunkStr;
+
+      tileBtn.addEventListener('click', () => {
+        if (this.isAnsweringLocked) return;
+        const emptySlot = slotBoxes.find(s => s.classList.contains('empty'));
+        if (!emptySlot) return;
+
+        this.triggerHaptic('light');
+        emptySlot.textContent = chunkStr;
+        emptySlot.classList.remove('empty', 'active-next-slot');
+        emptySlot.classList.add('filled');
+        emptySlot.dataset.tileId = tileBtn.dataset.tileId;
+        emptySlot.dataset.chunkText = chunkStr;
+
+        tileBtn.classList.add('used');
+        tileBtn.disabled = true;
+        updateActiveSlotHighlight();
+        soundEngine.playTick(false);
+
+        const allFilled = slotBoxes.every(s => s.classList.contains('filled'));
+        if (allFilled) {
+          this.evaluateSentenceOrder(q, slotBoxes);
+        }
+      });
+
+      this.attachTactileHaptics(tileBtn, 'light');
+      tilesGrid.appendChild(tileBtn);
+    });
+
+    tilesContainer.appendChild(tilesGrid);
+
+    // 2 Nút thao tác nhanh: Xóa từ vừa đặt (Undo) & Xóa hết (Clear)
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'letter-fill-actions sentence-order-actions';
+
+    const btnUndo = document.createElement('button');
+    btnUndo.type = 'button';
+    btnUndo.className = 'letter-action-btn';
+    btnUndo.id = 'btn-sentence-undo';
+    btnUndo.innerHTML = '⌫ Xóa từ';
+    btnUndo.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('light');
+      const filledSlots = slotBoxes.filter(s => s.classList.contains('filled'));
+      if (filledSlots.length === 0) return;
+      const lastSlot = filledSlots[filledSlots.length - 1];
+      const tileId = lastSlot.dataset.tileId;
+      lastSlot.textContent = lastSlot.dataset.placeholder || '___';
+      lastSlot.className = 'sentence-slot-box empty';
+      delete lastSlot.dataset.tileId;
+      delete lastSlot.dataset.chunkText;
+
+      if (tileId) {
+        const tileBtn = this.findTileButton(tileId);
+        if (tileBtn) {
+          tileBtn.classList.remove('used');
+          tileBtn.disabled = false;
+        }
+      }
+      updateActiveSlotHighlight();
+      soundEngine.playTick(false);
+    });
+
+    const btnClear = document.createElement('button');
+    btnClear.type = 'button';
+    btnClear.className = 'letter-action-btn';
+    btnClear.id = 'btn-sentence-clear';
+    btnClear.innerHTML = '🔄 Xóa hết';
+    btnClear.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('light');
+      slotBoxes.forEach((s) => {
+        if (s.classList.contains('filled')) {
+          const tileId = s.dataset.tileId;
+          s.textContent = s.dataset.placeholder || '___';
+          s.className = 'sentence-slot-box empty';
+          delete s.dataset.tileId;
+          delete s.dataset.chunkText;
+          if (tileId) {
+            const tileBtn = this.findTileButton(tileId);
+            if (tileBtn) {
+              tileBtn.classList.remove('used');
+              tileBtn.disabled = false;
+            }
+          }
+        }
+      });
+      updateActiveSlotHighlight();
+      soundEngine.playTick(false);
+    });
+
+    actionsDiv.appendChild(btnUndo);
+    actionsDiv.appendChild(btnClear);
+    tilesContainer.appendChild(actionsDiv);
+
+    this.answersContainer.appendChild(tilesContainer);
+  }
+
+  evaluateSentenceOrder(q, slotBoxes) {
+    const normalizeSentence = (arr) => arr.map(s => String(s || '').trim().toLowerCase()).join(' ').replace(/\s+/g, ' ').trim();
+    const userChunks = slotBoxes.map(s => (s.dataset && s.dataset.chunkText) || s.textContent.trim());
+    const targetChunks = Array.isArray(q.wordChunks) ? q.wordChunks : [];
+    const isCorrect = normalizeSentence(userChunks) === normalizeSentence(targetChunks);
+
+    this.isAnsweringLocked = true;
+    clearInterval(this.timerInterval);
+
+    if (isCorrect) {
+      slotBoxes.forEach(s => {
+        s.classList.remove('wrong-word');
+        s.classList.add('correct-word');
+      });
+      this.triggerHaptic('success');
+
+      const timeTaken = (Date.now() - this.questionStartTime) / 1000;
+      this.responseTimes.push(timeTaken);
+      const retentionRate = this.updateWordRetention(q.id, true);
+      this.updateMemoryProfile(q, true, timeTaken);
+      this.handleCorrectAnswer(timeTaken);
+      this.roundResults.push(true);
+      this.recordDailyAnswer();
+      this.renderSegmentedRoundBar();
+      this.showFeedbackDrawer(true, q, false, retentionRate);
+    } else {
+      // Hiển thị trật tự câu đúng ngay trên khay để học sinh nhìn rõ câu chuẩn ngữ pháp
+      slotBoxes.forEach((s, i) => {
+        s.textContent = targetChunks[i] || '';
+        s.classList.remove('empty', 'active-next-slot');
+        s.classList.add('filled', 'wrong-word');
+      });
+      this.triggerHaptic('error');
+      this.handleWrongAnswer(false);
+
+      const timeTaken = (Date.now() - this.questionStartTime) / 1000;
+      this.responseTimes.push(timeTaken);
+      const retentionRate = this.updateWordRetention(q.id, false);
+      this.updateMemoryProfile(q, false, timeTaken);
+      this.roundResults.push(false);
+      this.recordDailyAnswer();
+      this.renderSegmentedRoundBar();
+      this.showFeedbackDrawer(false, q, false, retentionRate);
+    }
+  }
+
+  renderInteractiveVoiceCheck(q) {
+    this.answersContainer.innerHTML = '';
+    this.letterBoxContainer.innerHTML = '';
+
+    const tokens = Array.isArray(q.voiceTokens) && q.voiceTokens.length > 0
+      ? q.voiceTokens
+      : ['We', 'practice', q.voiceTargetWord || q.target_word || 'vocabulary', 'today'];
+
+    const tokenEls = [];
+    tokens.forEach((wordStr, idx) => {
+      const span = document.createElement('span');
+      span.className = 'voice-word-token';
+      span.textContent = wordStr;
+      if (!span.dataset) span.dataset = {};
+      span.dataset.tokenIndex = String(idx);
+      span.dataset.word = wordStr.toLowerCase().replace(/[^a-z]/g, '');
+      tokenEls.push(span);
+      this.letterBoxContainer.appendChild(span);
+    });
+    this.currentVoiceTokenEls = tokenEls;
+
+    const arena = document.createElement('div');
+    arena.className = 'voice-check-arena';
+
+    const statusLine = document.createElement('div');
+    statusLine.className = 'voice-status-line';
+    statusLine.id = 'voice-status-line';
+    statusLine.innerHTML = `<span>🎙️ Chạm Micro để đọc từ hoặc cả cụm từ</span>`;
+
+    const micBtn = document.createElement('button');
+    micBtn.type = 'button';
+    micBtn.className = 'btn-voice-mic-main';
+    micBtn.id = 'btn-voice-record';
+    micBtn.innerHTML = `
+      <span class="voice-mic-icon-ring">🎙️</span>
+      <span class="voice-mic-label">Chạm để phát âm</span>
+    `;
+    this.attachTactileHaptics(micBtn, 'medium');
+    micBtn.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.startVoiceRecognition(q, micBtn, statusLine);
+    });
+
+    const quickActions = document.createElement('div');
+    quickActions.className = 'voice-quick-actions';
+
+    const btnListen = document.createElement('button');
+    btnListen.type = 'button';
+    btnListen.className = 'btn-voice-secondary';
+    btnListen.id = 'btn-voice-listen-sample';
+    btnListen.innerHTML = '🔊 Nghe mẫu';
+    btnListen.addEventListener('click', () => {
+      this.triggerHaptic('light');
+      const phraseToSpeak = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
+      if (typeof speechEngine !== 'undefined' && phraseToSpeak) {
+        speechEngine.speakWord(phraseToSpeak, 0.92);
+      }
+    });
+
+    const btnSimSpeak = document.createElement('button');
+    btnSimSpeak.type = 'button';
+    btnSimSpeak.className = 'btn-voice-secondary';
+    btnSimSpeak.id = 'btn-voice-sim-speak';
+    btnSimSpeak.innerHTML = '✨ Đọc chuẩn mẫu';
+    btnSimSpeak.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('light');
+      if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
+        soundEngine.playMicCue(true);
+      }
+      const sampleSpoken = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
+      this.evaluateVoicePronunciation(q, sampleSpoken, statusLine);
+    });
+
+    quickActions.appendChild(btnListen);
+    quickActions.appendChild(btnSimSpeak);
+
+    arena.appendChild(statusLine);
+    arena.appendChild(micBtn);
+    arena.appendChild(quickActions);
+
+    this.answersContainer.appendChild(arena);
+
+    // Tự động phát âm mẫu khi vào câu hỏi
+    setTimeout(() => {
+      const targetWord = q.voiceTargetWord || q.target_word;
+      if (typeof speechEngine !== 'undefined' && targetWord && !this.isAnsweringLocked) {
+        speechEngine.speakWord(targetWord, 0.92);
+      }
+    }, 160);
+  }
+
+  computeTextSimilarity(strA, strB) {
+    const a = String(strA || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+    const b = String(strB || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.includes(b) || b.includes(a)) return 0.92;
+
+    const lenA = a.length;
+    const lenB = b.length;
+    const dp = Array.from({ length: lenA + 1 }, () => Array(lenB + 1).fill(0));
+    for (let i = 0; i <= lenA; i++) dp[i][0] = i;
+    for (let j = 0; j <= lenB; j++) dp[0][j] = j;
+
+    for (let i = 1; i <= lenA; i++) {
+      for (let j = 1; j <= lenB; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + cost
+        );
+      }
+    }
+    const maxLen = Math.max(lenA, lenB);
+    return maxLen > 0 ? Math.max(0, 1 - dp[lenA][lenB] / maxLen) : 0;
+  }
+
+  startVoiceRecognition(q, micBtn, statusLine) {
+    if (this.isAnsweringLocked) return;
+
+    if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
+      soundEngine.playMicCue(true);
+    }
+    this.triggerHaptic('medium');
+
+    const SpeechRecognitionAPI = (typeof window !== 'undefined')
+      ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+      : null;
+
+    if (micBtn && micBtn.classList) {
+      micBtn.classList.add('listening');
+    }
+    if (statusLine) {
+      statusLine.innerHTML = `<span style="color:#34d399;">🎙️ Đang lắng nghe giọng đọc của bạn...</span>`;
+    }
+
+    if (!SpeechRecognitionAPI) {
+      // Fallback thông minh trên trình duyệt/môi trường không hỗ trợ Web Speech API trực tiếp
+      setTimeout(() => {
+        if (this.isAnsweringLocked) return;
+        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
+        if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
+          soundEngine.playMicCue(false);
+        }
+        const simulatedTranscript = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
+        this.evaluateVoicePronunciation(q, simulatedTranscript, statusLine);
+      }, 650);
+      return;
+    }
+
+    try {
+      if (this.activeSpeechRecognition) {
+        try { this.activeSpeechRecognition.abort(); } catch (e) {}
+      }
+      const recognition = new SpeechRecognitionAPI();
+      this.activeSpeechRecognition = recognition;
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 3;
+
+      let handled = false;
+      recognition.onresult = (event) => {
+        if (handled || this.isAnsweringLocked) return;
+        handled = true;
+        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
+        if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
+          soundEngine.playMicCue(false);
+        }
+        let bestTranscript = '';
+        if (event.results && event.results[0]) {
+          for (let i = 0; i < event.results[0].length; i++) {
+            const candidate = event.results[0][i].transcript || '';
+            if (!bestTranscript) bestTranscript = candidate;
+            const targetCheck = (q.voiceTargetWord || q.target_word || '').toLowerCase();
+            if (candidate.toLowerCase().includes(targetCheck)) {
+              bestTranscript = candidate;
+              break;
+            }
+          }
+        }
+        this.evaluateVoicePronunciation(q, bestTranscript, statusLine);
+      };
+
+      recognition.onerror = () => {
+        if (handled || this.isAnsweringLocked) return;
+        handled = true;
+        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
+        if (statusLine) {
+          statusLine.innerHTML = `<span style="color:#fbbf24;">💡 Không nghe rõ mic — Chạm "✨ Đọc chuẩn mẫu" hoặc thử lại</span>`;
+        }
+      };
+
+      recognition.onend = () => {
+        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
+      };
+
+      recognition.start();
+    } catch (err) {
+      if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
+      const fallbackTranscript = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
+      this.evaluateVoicePronunciation(q, fallbackTranscript, statusLine);
+    }
+  }
+
+  evaluateVoicePronunciation(q, spokenText, statusLineEl = null) {
+    if (this.isAnsweringLocked) return;
+
+    const cleanSpoken = String(spokenText || '').trim();
+    const targetWord = String(q.voiceTargetWord || q.target_word || '').trim();
+    const targetPhrase = String(q.voicePhrase || targetWord).trim();
+
+    const simWord = this.computeTextSimilarity(cleanSpoken, targetWord);
+    const simPhrase = this.computeTextSimilarity(cleanSpoken, targetPhrase);
+
+    const spokenWords = cleanSpoken.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
+    const tokens = Array.isArray(q.voiceTokens) && q.voiceTokens.length > 0
+      ? q.voiceTokens
+      : [targetWord];
+
+    let matchedCount = 0;
+    const tokenEls = this.currentVoiceTokenEls || [];
+    tokens.forEach((tok, idx) => {
+      const cleanTok = tok.toLowerCase().replace(/[^a-z]/g, '');
+      const isMatched = spokenWords.some(sw => this.computeTextSimilarity(sw, cleanTok) >= 0.72)
+        || this.computeTextSimilarity(cleanSpoken, cleanTok) >= 0.75;
+      if (isMatched) matchedCount++;
+      const el = tokenEls[idx];
+      if (el && el.classList) {
+        el.classList.remove('spoken-match', 'spoken-miss');
+        el.classList.add(isMatched ? 'spoken-match' : 'spoken-miss');
+      }
+    });
+
+    const tokenRatio = tokens.length > 0 ? matchedCount / tokens.length : 0;
+    const rawScore = Math.max(simWord, simPhrase, tokenRatio);
+    const accuracyPct = Math.min(100, Math.max(0, Math.round(rawScore * 100)));
+    const isCorrect = accuracyPct >= 65;
+
+    const statusLine = statusLineEl || (this.answersContainer && this.answersContainer.querySelector
+      ? this.answersContainer.querySelector('#voice-status-line')
+      : null);
+    if (statusLine) {
+      statusLine.innerHTML = `
+        <span>🎙️ Bạn đọc: <strong>“${cleanSpoken || '...'}”</strong></span>
+        <span class="voice-score-pill">${accuracyPct}%</span>
+      `;
+    }
+
+    this.isAnsweringLocked = true;
+    clearInterval(this.timerInterval);
+
+    const timeTaken = (Date.now() - this.questionStartTime) / 1000;
+    this.responseTimes.push(timeTaken);
+    const retentionRate = this.updateWordRetention(q.id, isCorrect);
+    this.updateMemoryProfile(q, isCorrect, timeTaken);
+
+    if (isCorrect) {
+      tokenEls.forEach(el => {
+        if (el && el.classList) {
+          el.classList.remove('spoken-miss');
+          el.classList.add('spoken-match');
+        }
+      });
+      this.triggerHaptic('success');
+      this.handleCorrectAnswer(timeTaken);
+      this.roundResults.push(true);
+      this.recordDailyAnswer(true);
+      this.renderSegmentedRoundBar();
+      this.showFeedbackDrawer(true, q, false, retentionRate);
+    } else {
+      this.triggerHaptic('error');
+      this.handleWrongAnswer(false);
+      this.roundResults.push(false);
+      this.recordDailyAnswer(false);
+      this.renderSegmentedRoundBar();
+      this.showFeedbackDrawer(false, q, false, retentionRate);
+    }
+    return { isCorrect, accuracyPct };
   }
 
   renderLetterBoxes(maskedStr) {
@@ -2095,7 +3483,10 @@ class GameEngine {
   // Đếm ngược với bước nhảy 50ms siêu mượt
   startTimer() {
     clearInterval(this.timerInterval);
-    const roundLimit = this.activeRoundTimeLimit || this.maxTimeSeconds;
+    const currentQ = this.questions && this.questions[this.currentIndex];
+    const roundLimit = (currentQ && (currentQ.mode === 'sentence_order' || currentQ.mode === 'voice_check') && !currentQ.isAudioQuiz)
+      ? 30.0
+      : (this.activeRoundTimeLimit || this.maxTimeSeconds);
     this.remainingTime = roundLimit;
     this.questionStartTime = Date.now();
     this.timerBar.classList.remove('urgent');
@@ -2157,8 +3548,19 @@ class GameEngine {
     const timeTaken = (Date.now() - this.questionStartTime) / 1000;
     this.responseTimes.push(timeTaken);
 
-    // Hỗ trợ hiển thị trực quan cho dạng Letter Fill khi gọi trực tiếp từ test/phím
-    if (q.mode === 'letter_fill' && q.missing && this.letterBoxContainer && this.letterBoxContainer.querySelectorAll) {
+    // Hỗ trợ hiển thị trực quan cho dạng Sentence Order hoặc Letter Fill khi gọi trực tiếp từ test/phím
+    if (q.mode === 'sentence_order' && Array.isArray(q.wordChunks) && this.letterBoxContainer && this.letterBoxContainer.querySelectorAll) {
+      const slots = this.letterBoxContainer.querySelectorAll('.sentence-slot-box');
+      if (slots && slots.forEach) {
+        slots.forEach((s, i) => {
+          s.textContent = q.wordChunks[i] || '';
+          if (s.classList && s.classList.add) {
+            s.classList.remove('empty', 'active-next-slot');
+            s.classList.add('filled', isCorrect ? 'correct-word' : 'wrong-word');
+          }
+        });
+      }
+    } else if (q.mode === 'letter_fill' && q.missing && this.letterBoxContainer && this.letterBoxContainer.querySelectorAll) {
       const blanks = this.letterBoxContainer.querySelectorAll('.letter-box.blank');
       const missingLetters = Array.isArray(q.missing) ? q.missing : q.missing.split('');
       if (blanks && blanks.forEach) {
@@ -2214,7 +3616,20 @@ class GameEngine {
     this.recordDailyAnswer();
     this.renderSegmentedRoundBar();
 
-    if (q.mode === 'letter_fill' && q.missing && this.letterBoxContainer && this.letterBoxContainer.querySelectorAll) {
+    if (q.mode === 'sentence_order' && Array.isArray(q.wordChunks) && this.letterBoxContainer && this.letterBoxContainer.querySelectorAll) {
+      const slots = this.letterBoxContainer.querySelectorAll('.sentence-slot-box');
+      if (slots && slots.forEach) {
+        slots.forEach((s, i) => {
+          s.textContent = q.wordChunks[i] || '';
+          if (s.classList && s.classList.add) {
+            s.classList.remove('empty', 'active-next-slot');
+            s.classList.add('filled', 'wrong-word');
+          }
+        });
+      }
+      const tileBtns = this.answersContainer.querySelectorAll ? this.answersContainer.querySelectorAll('.word-order-tile-btn') : [];
+      if (tileBtns && tileBtns.forEach) tileBtns.forEach(btn => { btn.disabled = true; });
+    } else if (q.mode === 'letter_fill' && q.missing && this.letterBoxContainer && this.letterBoxContainer.querySelectorAll) {
       const blanks = this.letterBoxContainer.querySelectorAll('.letter-box.blank');
       const missingLetters = Array.isArray(q.missing) ? q.missing : q.missing.split('');
       if (blanks && blanks.forEach) {
@@ -2241,6 +3656,7 @@ class GameEngine {
     this.revealHiddenOptionPosTags();
     const retentionRate = this.updateWordRetention(q.id, false);
     this.updateMemoryProfile(q, false, this.maxTimeSeconds);
+    this.triggerHaptic('timeout');
     this.handleWrongAnswer(true);
 
     this.showFeedbackDrawer(false, q, true, retentionRate);
@@ -2313,6 +3729,16 @@ class GameEngine {
         this.weakWordIds.push(q.id);
         this.saveWeakWords();
       }
+      // Nếu là câu hỏi từ đề thi AI tạo, lưu vết Adaptive trực tiếp vào customExamBank trong LocalStorage
+      if ((q.is_custom_exam || q.category === 'custom_exam') && Array.isArray(this.customExamBank)) {
+        const baseId = String(q.id || '').replace(/_recall_\d+$/, '');
+        const bankItem = this.customExamBank.find(item => item && item.id === baseId);
+        if (bankItem) {
+          bankItem.adaptiveFailCount = (bankItem.adaptiveFailCount || 0) + 1;
+          bankItem.lastFailedAt = Date.now();
+          this.saveCustomExamBank();
+        }
+      }
       this.injectRecallVariant(q);
     }
 
@@ -2325,6 +3751,33 @@ class GameEngine {
 
   injectRecallVariant(wrongQ) {
     if (!wrongQ || wrongQ.isRecallVariant) return;
+
+    // Nếu học sinh làm sai câu hỏi trong Đề Thi AI (custom_exam):
+    // Áp dụng thuật toán Adaptive tái kiểm tra lại chính câu/kiến thức vừa sai với thứ tự đáp án đảo mới cách đó 2-3 câu
+    if (wrongQ.is_custom_exam || wrongQ.category === 'custom_exam') {
+      const baseOptions = Array.isArray(wrongQ.options) && wrongQ.options.length > 0
+        ? [...wrongQ.options]
+        : [wrongQ.target_word || 'academic', 'sustainable', 'comprehensive', 'mandatory'];
+      const correctAnsText = baseOptions[wrongQ.correct] || wrongQ.target_word || baseOptions[0];
+      const shuffledOpts = shuffleArray(baseOptions);
+      const newCorrectIdx = Math.max(0, shuffledOpts.indexOf(correctAnsText));
+
+      const adaptiveExamRetry = {
+        ...wrongQ,
+        id: `${wrongQ.id}_recall_${Date.now()}`,
+        isRecallVariant: true,
+        isAdaptiveExamRetry: true,
+        prompt: `🔁 [ADAPTIVE ÔN LẠI CÂU SAI] ${wrongQ.prompt || 'Chọn đáp án đúng cho câu trong đề:'}`,
+        options: shuffledOpts,
+        correct: newCorrectIdx
+      };
+      const insertIdx = Math.min(this.questions.length, this.currentIndex + 2);
+      this.questions.splice(insertIdx, 0, adaptiveExamRetry);
+      this.getOrPrecomputeQuestionMeta(adaptiveExamRetry);
+      this.renderSegmentedRoundBar();
+      return;
+    }
+
     const pool = this.getFilteredBank();
     const otherWords = pool
       .filter(x => x.target_word && x.target_word !== wrongQ.target_word)
@@ -2410,13 +3863,24 @@ class GameEngine {
         e.stopPropagation();
         replayBtn.classList.add('playing');
         setTimeout(() => replayBtn.classList.remove('playing'), 900);
-        const word = q.target_word || (q.options && q.options[q.correct]) || '';
+        const word = (q.mode === 'sentence_order' && q.targetSentence)
+          ? q.targetSentence
+          : (q.target_word || (q.options && q.options[q.correct]) || '');
         if (typeof speechEngine !== 'undefined') speechEngine.speakWord(word);
       });
     }
 
     if (this.feedbackExplanation) {
-      this.feedbackExplanation.textContent = this.getShortBandTag(q);
+      if ((q.category === 'custom_exam' || q.is_custom_exam) && q.explanation) {
+        this.feedbackExplanation.textContent = `🤖 AI Giải thích: ${q.explanation}`;
+      } else if (q.mode === 'sentence_order' && q.targetSentence) {
+        const shortExp = q.explanation ? ` • 💡 ${q.explanation}` : '';
+        this.feedbackExplanation.textContent = `"${q.targetSentence}"${shortExp}`;
+      } else if (q.explanation) {
+        this.feedbackExplanation.textContent = `${this.getShortBandTag(q)} • 💡 ${q.explanation}`;
+      } else {
+        this.feedbackExplanation.textContent = this.getShortBandTag(q);
+      }
     }
 
     if (this.feedbackConfusableBox) {
@@ -2472,6 +3936,54 @@ class GameEngine {
 
     const q = this.questions[this.currentIndex];
 
+    if (q.mode === 'sentence_order' && Array.isArray(q.wordChunks)) {
+      const slots = this.letterBoxContainer && this.letterBoxContainer.querySelectorAll
+        ? Array.from(this.letterBoxContainer.querySelectorAll('.sentence-slot-box'))
+        : [];
+      const tileBtns = this.answersContainer && this.answersContainer.querySelectorAll
+        ? Array.from(this.answersContainer.querySelectorAll('.word-order-tile-btn'))
+        : [];
+
+      let autoPlaced = 0;
+      for (let i = 0; i < slots.length && autoPlaced < 2; i++) {
+        // Giữ lại ít nhất 1 ô cuối để học sinh tự bấm hoàn thành câu
+        const remainingEmpty = slots.filter(s => s.classList && s.classList.contains('empty')).length;
+        if (remainingEmpty <= 1 && autoPlaced >= 1) break;
+
+        const slot = slots[i];
+        const expectedChunk = q.wordChunks[i];
+        const currentChunk = (slot.dataset && slot.dataset.chunkText) || '';
+
+        if (slot.classList.contains('empty') || currentChunk.toLowerCase() !== expectedChunk.toLowerCase()) {
+          // Nếu ô đang chứa từ sai, trả từ sai đó về kho trước
+          if (slot.classList.contains('filled') && slot.dataset && slot.dataset.tileId) {
+            const oldTile = this.findTileButton(slot.dataset.tileId);
+            if (oldTile) {
+              oldTile.classList.remove('used');
+              oldTile.disabled = false;
+            }
+            slot.textContent = slot.dataset.placeholder || String(i + 1);
+            slot.className = 'sentence-slot-box empty';
+            delete slot.dataset.tileId;
+            delete slot.dataset.chunkText;
+          }
+
+          // Tìm phím có cụm từ đúng chưa dùng
+          const matchTile = tileBtns.find(btn => {
+            const c = (btn.dataset && btn.dataset.chunk) || btn.textContent.trim();
+            return !btn.disabled && (!btn.classList || !btn.classList.contains('used')) && c.toLowerCase() === expectedChunk.toLowerCase();
+          });
+
+          if (matchTile && matchTile.click) {
+            matchTile.click();
+            autoPlaced++;
+          }
+        }
+      }
+      this.flashDynamicIsland('⚡ 50:50 ĐÃ GHÉP SẴN CỤM TỪ ĐÚNG');
+      return;
+    }
+
     if (q.mode === 'letter_fill') {
       const missingLetters = (Array.isArray(q.missing) ? q.missing : q.missing.split('')).map(m => m.toUpperCase());
       const tileBtns = this.answersContainer.querySelectorAll 
@@ -2523,6 +4035,14 @@ class GameEngine {
     soundEngine.playPowerup();
 
     const q = this.questions[this.currentIndex];
+    if (q && q.mode === 'sentence_order' && Array.isArray(q.wordChunks)) {
+      const firstTwo = q.wordChunks.slice(0, 2).join(' ');
+      if (this.questionMainText) {
+        this.questionMainText.innerHTML = `<span class="sentence-order-meaning-cue">💡 Mở đầu câu: <strong class="sentence-hint-target">“${firstTwo} ...”</strong> (${q.vietnamese})</span>`;
+      }
+      this.flashDynamicIsland(`💡 GỢI Ý MỞ ĐẦU: "${firstTwo}..."`);
+      return;
+    }
     this.flashDynamicIsland(`💡 GỢI Ý: ${q.vietnamese.slice(0, 32)}...`);
   }
 
@@ -2702,11 +4222,33 @@ ${emojiBlocks}
     }, durationMs);
   }
 
+  toggleSentenceOrderMode() {
+    if (this.currentGradeFilter === 'sentence_order') {
+      this.setGradeFilter('all');
+    } else {
+      this.setGradeFilter('sentence_order');
+    }
+  }
+
   toggleAudioQuizMode() {
     if (this.currentGradeFilter === 'audio') {
       this.setGradeFilter('all');
     } else {
+      // Nếu học sinh đang ở sẵn một Lớp (Lớp 6 - 12, TOEIC, Band 7), đồng bộ luôn phân loại lớp đó vào phần Luyện Nghe
+      if (['g6', 'g7', 'g8', 'g9', 'g10', 'g11', 'g12', 'toeic', 'band7'].includes(this.currentGradeFilter)) {
+        this.audioGradeFilter = this.currentGradeFilter;
+        this.saveAudioGradeFilter();
+      }
+      this.updateAudioGradeFilterUI();
       this.setGradeFilter('audio');
+    }
+  }
+
+  toggleVoiceCheckMode() {
+    if (this.currentGradeFilter === 'voice_check') {
+      this.setGradeFilter('all');
+    } else {
+      this.setGradeFilter('voice_check');
     }
   }
 
@@ -2736,6 +4278,7 @@ ${emojiBlocks}
     localStorage.setItem('ielts_grade_filter', filterKey);
     this.usedQuestionIds.clear(); // Reset question rotation on filter switch
     this.updateGradeFilterUI();
+    this.updateAudioGradeFilterUI();
     this.closeGradeModal();
     this.startNewRound();
     if (this.currentFilterPillLabel) {
@@ -2744,9 +4287,24 @@ ${emojiBlocks}
   }
 
   updateGradeFilterUI() {
+    const audioGradeNames = {
+      all: '',
+      g6: ' • Lớp 6',
+      g7: ' • Lớp 7',
+      g8: ' • Lớp 8',
+      g9: ' • Lớp 9',
+      g10: ' • Lớp 10',
+      g11: ' • Lớp 11',
+      g12: ' • Lớp 12',
+      toeic: ' • TOEIC',
+      band7: ' • Band 7+'
+    };
+    const audioSubSuffix = audioGradeNames[this.audioGradeFilter || 'all'] || '';
     const filterLabels = {
       all: 'Adaptive',
-      audio: '🎧 Nghe AI',
+      sentence_order: '🧩 Xếp câu',
+      audio: `🎧 Nghe AI${audioSubSuffix}`,
+      voice_check: '🎙️ Phát âm',
       weak: '🔥 Từ Yếu',
       custom_exam: '📄 Tạo câu hỏi từ đề thi',
       part5_speed: '⚡ Part 5 Speed',
@@ -2768,8 +4326,29 @@ ${emojiBlocks}
     if (this.currentFilterPillLabel) {
       this.currentFilterPillLabel.textContent = filterLabels[this.currentGradeFilter] || 'Adaptive';
     }
+    const isMiniGameActive = this.currentGradeFilter === 'sentence_order'
+      || this.currentGradeFilter === 'audio'
+      || this.currentGradeFilter === 'voice_check';
+    if (this.btnMiniGamesToggle && this.btnMiniGamesToggle.classList) {
+      this.btnMiniGamesToggle.classList.toggle('active-mode', isMiniGameActive);
+    }
+    if (this.btnSentenceOrderMode && this.btnSentenceOrderMode.classList) {
+      this.btnSentenceOrderMode.classList.toggle('active-mode', this.currentGradeFilter === 'sentence_order');
+    }
+    if (this.badgeGameSentenceOrder) {
+      this.badgeGameSentenceOrder.textContent = this.currentGradeFilter === 'sentence_order' ? 'Đang chơi ✓' : '30s';
+    }
     if (this.btnAudioQuizMode && this.btnAudioQuizMode.classList) {
       this.btnAudioQuizMode.classList.toggle('active-mode', this.currentGradeFilter === 'audio');
+    }
+    if (this.badgeGameAudioQuiz) {
+      this.badgeGameAudioQuiz.textContent = this.currentGradeFilter === 'audio' ? 'Đang chơi ✓' : 'Nghe AI';
+    }
+    if (this.btnVoiceCheckMode && this.btnVoiceCheckMode.classList) {
+      this.btnVoiceCheckMode.classList.toggle('active-mode', this.currentGradeFilter === 'voice_check');
+    }
+    if (this.badgeGameVoiceCheck) {
+      this.badgeGameVoiceCheck.textContent = this.currentGradeFilter === 'voice_check' ? 'Đang chơi ✓' : 'Chấm giọng';
     }
     if (this.btnExamImport && this.btnExamImport.classList) {
       this.btnExamImport.classList.toggle('active-mode', this.currentGradeFilter === 'custom_exam');
@@ -2917,20 +4496,15 @@ ${emojiBlocks}
         this.triggerHaptic('light');
         this.examRawTextInput.value =
 `1. All visitors must display their identification badges ____ entering the research laboratory.
-A. prior to   B. instead of   C. except for   D. regardless of
-Answer: A
+A. instead of   B. prior to   C. except for   D. regardless of
 2. The accounting department found a significant ____ between the estimated budget and actual expenses.
-A. discrepancy   B. itinerary   C. warranty   D. vacancy
-Answer: A
-3. Ms.oma's contract renewal is ____ upon her completing the mandatory safety certification.
+A. itinerary   B. warranty   C. discrepancy   D. vacancy
+3. The contract renewal is ____ upon completing the mandatory safety certification.
 A. contingent   B. complimentary   C. tentative   D. lucrative
-Answer: A
 4. Please submit all original travel receipts so we can ____ your accommodation expenses promptly.
-A. reimburse   B. postpone   C. supervise   D. terminate
-Answer: A
+A. postpone   B. reimburse   C. supervise   D. terminate
 5. Following the merger, the board implemented ____ quality control standards across all factories.
-A. stringent   B. eligible   C. confidential   D. prospective
-Answer: A`;
+A. eligible   B. confidential   C. prospective   D. stringent`;
       });
     }
     if (this.examModeSelector && this.examModeSelector.querySelectorAll) {
@@ -3477,7 +5051,7 @@ Answer: A`;
     }
     if (this.examImportStatus) {
       this.examImportStatus.style.display = 'block';
-      this.examImportStatus.textContent = '📸 Đã chụp ảnh đề thi sắc nét! Bấm nút "✨ Tạo Câu Hỏi Trắc Nghiệm Ngay" bên dưới.';
+      this.examImportStatus.textContent = '📸 Đã chụp ảnh đề thi sắc nét! Bấm nút "Tạo Câu Hỏi" bên dưới.';
     }
 
     setTimeout(() => {
@@ -3580,7 +5154,7 @@ Answer: A`;
 
       if (this.examImportStatus) {
         this.examImportStatus.style.display = 'block';
-        this.examImportStatus.textContent = `📸 Đã lưu ${this.savedExamPhotos.length} ảnh đề thi trên máy! Bạn có thể bấm "➕ Chụp thêm" để chụp nhiều trang hoặc bấm "✨ Tạo Câu Hỏi Trắc Nghiệm Ngay".`;
+        this.examImportStatus.textContent = `📸 Đã lưu ${this.savedExamPhotos.length} ảnh đề thi trên máy! Bạn có thể bấm "➕ Chụp thêm" để chụp nhiều trang hoặc bấm "Tạo Câu Hỏi".`;
       }
     }
   }
@@ -3702,6 +5276,11 @@ Answer: A`;
     });
   }
 
+  cancelBackgroundExamGeneration() {
+    this.backgroundExamJobId = (this.backgroundExamJobId || 0) + 1;
+    this.isGeneratingExamInBackground = false;
+  }
+
   async convertExamFileToQuestions() {
     const rawText = this.examRawTextInput ? String(this.examRawTextInput.value || '').trim() : '';
     const savedPhotos = Array.isArray(this.savedExamPhotos) ? this.savedExamPhotos : [];
@@ -3715,14 +5294,17 @@ Answer: A`;
       return;
     }
 
+    this.cancelBackgroundExamGeneration();
+    const currentJobId = this.backgroundExamJobId;
+
     if (this.btnRunExamConvert) {
       this.btnRunExamConvert.disabled = true;
-      this.btnRunExamConvert.innerHTML = '<span>⏳ AI đang phân tích đề & tạo câu hỏi...</span>';
+      this.btnRunExamConvert.innerHTML = '<span>⏳ Đang tạo nhanh 5 câu đầu...</span>';
     }
     if (this.examImportStatus) {
       this.examImportStatus.style.display = 'block';
       const photoInfo = savedPhotos.length > 0 ? `${savedPhotos.length} ảnh đề thi` : 'tài liệu đề thi';
-      this.examImportStatus.textContent = `🤖 Đang đọc ${photoInfo} và chuyển thành câu hỏi Trắc nghiệm & Điền từ...`;
+      this.examImportStatus.textContent = `🤖 AI đang tạo trước 5 câu hỏi đầu tiên từ ${photoInfo} để bạn vào làm ngay (sau đó sẽ tự động tạo tiếp tối đa 60 câu)...`;
     }
 
     try {
@@ -3746,6 +5328,8 @@ Answer: A`;
         base64Data: p.base64Data || ''
       })).filter(item => Boolean(item.base64Data));
 
+      // BƯỚC 1: Chỉ tạo trước ĐÚNG 5 CÂU HỎI ĐẦU TIÊN để học sinh vào làm bài ngay lập tức!
+      const initialBatchSize = this.initialExamBatchSize || 5;
       const response = await fetch('/api/exam-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3755,8 +5339,9 @@ Answer: A`;
           base64Data,
           images: imagesPayload,
           rawText,
-          questionCount: this.examQuestionCount || 10,
-          questionTypeMode: this.examQuestionTypeMode || 'mixed'
+          offset: 0,
+          questionCount: initialBatchSize,
+          questionTypeMode: this.examQuestionTypeMode || 'mcq_only'
         })
       });
 
@@ -3765,16 +5350,52 @@ Answer: A`;
         throw new Error((data && data.error) || 'Không trích xuất được câu hỏi từ tài liệu.');
       }
 
-      this.customExamBank = [...data.questions, ...(this.customExamBank || [])].slice(0, 120);
+      const firstBatch = data.questions.slice(0, initialBatchSize);
+      this.customExamBank = [...firstBatch];
       this.saveCustomExamBank();
+
+      // Lưu thông tin đề thi vào lịch sử LocalStorage trên thiết bị
+      this.savedExamsHistory = [
+        {
+          id: `exam_${Date.now()}`,
+          title: fileName || (rawText ? `Đề văn bản (${rawText.slice(0, 24)}...)` : 'Đề thi AI'),
+          createdAt: new Date().toISOString(),
+          questionCount: this.customExamBank.length
+        },
+        ...(this.savedExamsHistory || [])
+      ].slice(0, 15);
+      this.saveSavedExamsHistory();
+
       this.renderCustomExamPreview();
       this.updateGradeFilterUI();
       soundEngine.playVictory();
       this.triggerHaptic('success');
 
+      const hasMoreToGenerate = Boolean(data.hasMore) && this.customExamBank.length < (this.maxQuestionsPerExam || 60);
+
       if (this.examImportStatus) {
         this.examImportStatus.style.display = 'block';
-        this.examImportStatus.textContent = `🎉 Đã tạo xong ${data.questions.length} câu hỏi (Ảnh vẫn được lưu trên máy cho các lần học sau)! Bấm nút màu xanh lá bên dưới để làm bài ngay.`;
+        this.examImportStatus.textContent = hasMoreToGenerate
+          ? `🎉 Đã tạo xong ${firstBatch.length} câu đầu tiên! Hệ thống đang tiếp tục tạo ngầm các câu tiếp theo (tối đa 60 câu) trong lúc bạn làm bài.`
+          : `🎉 Đã tạo xong ${firstBatch.length} câu từ đề thi vào bộ nhớ máy! Bấm nút bên dưới để làm bài ngay.`;
+      }
+
+      // Tự động đưa học sinh vào làm ngay 5 câu đầu tiên vừa tạo!
+      this.closeExamImportModal();
+      this.setGradeFilter('custom_exam');
+
+      // BƯỚC 2: Trong lúc học sinh đang làm 5 câu đầu, tiếp tục tạo ngầm các câu tiếp theo (tối đa 60 câu cho 1 đề)
+      if (hasMoreToGenerate) {
+        this.continueBackgroundExamGeneration({
+          jobId: currentJobId,
+          fileName,
+          mimeType,
+          base64Data,
+          images: imagesPayload,
+          rawText,
+          questionTypeMode: this.examQuestionTypeMode || 'mcq_only',
+          startOffset: firstBatch.length
+        });
       }
     } catch (err) {
       if (this.examImportStatus) {
@@ -3785,19 +5406,110 @@ Answer: A`;
     } finally {
       if (this.btnRunExamConvert) {
         this.btnRunExamConvert.disabled = false;
-        this.btnRunExamConvert.innerHTML = '<span>✨ Tạo Câu Hỏi Trắc Nghiệm Ngay</span>';
+        this.btnRunExamConvert.innerHTML = '<span>Tạo Câu Hỏi</span>';
+      }
+    }
+  }
+
+  async continueBackgroundExamGeneration(ctx) {
+    if (!ctx || ctx.jobId !== this.backgroundExamJobId) return;
+    this.isGeneratingExamInBackground = true;
+    const maxCap = this.maxQuestionsPerExam || 60;
+    const batchStep = 10;
+    let currentOffset = Number(ctx.startOffset) || 5;
+
+    try {
+      while (currentOffset < maxCap && ctx.jobId === this.backgroundExamJobId) {
+        const remaining = maxCap - currentOffset;
+        const countToFetch = Math.min(batchStep, remaining);
+        if (countToFetch <= 0) break;
+
+        const existingSentences = (this.customExamBank || []).map(q => q.sentence).filter(Boolean);
+        const res = await fetch('/api/exam-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: ctx.fileName,
+            mimeType: ctx.mimeType,
+            base64Data: ctx.base64Data,
+            images: ctx.images,
+            rawText: ctx.rawText,
+            offset: currentOffset,
+            questionCount: countToFetch,
+            excludeSentences: existingSentences,
+            questionTypeMode: ctx.questionTypeMode || 'mcq_only'
+          })
+        });
+
+        if (!res.ok || ctx.jobId !== this.backgroundExamJobId) break;
+        const data = await res.json();
+        const nextQuestions = (data && Array.isArray(data.questions)) ? data.questions : [];
+        if (nextQuestions.length === 0) break;
+
+        // Lọc trùng lặp câu hỏi và giới hạn tối đa 60 câu cho 1 đề
+        const existingSet = new Set((this.customExamBank || []).map(q => `${q.sentence}__${q.target_word}`));
+        const uniqueNew = nextQuestions.filter(q => {
+          const key = `${q.sentence}__${q.target_word}`;
+          if (existingSet.has(key)) return false;
+          existingSet.add(key);
+          return true;
+        });
+
+        if (uniqueNew.length > 0) {
+          this.customExamBank = [...(this.customExamBank || []), ...uniqueNew].slice(0, maxCap);
+          this.saveCustomExamBank();
+          this.renderCustomExamPreview();
+          this.updateGradeFilterUI();
+
+          // Nếu học sinh đang làm chính bộ đề này, nối mượt các câu mới vào hàng đợi (tối đa 60 câu) mà không làm gián đoạn câu hiện tại
+          if (this.currentGradeFilter === 'custom_exam' && Array.isArray(this.questions)) {
+            uniqueNew.forEach((nq, idx) => {
+              if (this.questions.length < maxCap && !this.questions.some(eq => eq.id === nq.id)) {
+                const normalizedMode = (nq.mode === 'letter_fill' && nq.sentence) ? 'sentence_cloze' : (nq.mode || 'sentence_cloze');
+                const formattedQ = {
+                  ...nq,
+                  category: 'custom_exam',
+                  is_custom_exam: true,
+                  exam_verbatim: true,
+                  mode: normalizedMode
+                };
+                this.questions.push(formattedQ);
+                this.usedQuestionIds.add(formattedQ.id);
+              }
+            });
+            this.saveUsedQuestionIds();
+            if (this.progressText && this.questions.length > 0) {
+              this.progressText.textContent = `Câu ${this.currentIndex + 1}/${this.questions.length}`;
+            }
+            this.renderSegmentedRoundBar();
+            this.preloadUpcomingQuestions(this.currentIndex + 1, 3);
+          }
+        }
+
+        currentOffset += nextQuestions.length;
+        if (!data.hasMore || this.customExamBank.length >= maxCap) {
+          break;
+        }
+      }
+    } catch (bgErr) {
+      // Giữ nguyên các câu đã tạo trong LocalStorage nếu mạng gián đoạn
+    } finally {
+      if (ctx.jobId === this.backgroundExamJobId) {
+        this.isGeneratingExamInBackground = false;
+        this.renderCustomExamPreview();
       }
     }
   }
 
   renderCustomExamPreview() {
-    const bank = this.customExamBank || [];
+    const bank = (this.customExamBank || []).slice(0, 60);
     const readyBar = document.getElementById('exam-ready-bar');
     if (readyBar) {
       readyBar.style.display = bank.length > 0 ? 'flex' : 'none';
     }
     if (this.examPreviewCountLabel) {
-      this.examPreviewCountLabel.textContent = `📚 Đã có sẵn: ${bank.length} câu hỏi`;
+      const bgTag = this.isGeneratingExamInBackground ? ' (⏳ đang tạo tiếp tối đa 60 câu...)' : '';
+      this.examPreviewCountLabel.textContent = `📚 Đã lưu trên máy: ${bank.length}/60 câu hỏi${bgTag}`;
     }
     if (this.btnClearCustomBank) {
       this.btnClearCustomBank.style.display = bank.length > 0 ? 'inline-block' : 'none';
@@ -4015,12 +5727,15 @@ Answer: A`;
     try {
       const payload = {
         app: 'Danh học IELTS & TOEIC Arena',
-        version: '3.2.0',
+        version: '3.3.0',
         exportedAt: new Date().toISOString(),
         memoryProfiles: this.memoryProfiles || {},
         srsMatrix: this.srsMatrix || {},
         weakWordIds: this.weakWordIds || [],
-        dailyTracker: this.dailyTracker || {}
+        dailyTracker: this.dailyTracker || {},
+        customExamBank: (this.customExamBank || []).slice(0, 60),
+        savedExamsHistory: this.savedExamsHistory || [],
+        audioGradeFilter: this.audioGradeFilter || 'all'
       };
       const jsonStr = JSON.stringify(payload, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -4062,6 +5777,16 @@ Answer: A`;
           this.dailyTracker = { ...this.dailyTracker, ...parsed.dailyTracker };
           this.saveDailyTracker();
           this.updateDailyTrackerUI();
+        }
+        if (Array.isArray(parsed.customExamBank)) {
+          this.customExamBank = parsed.customExamBank.slice(0, 60);
+          this.saveCustomExamBank();
+          this.renderCustomExamPreview();
+        }
+        if (typeof parsed.audioGradeFilter === 'string') {
+          this.audioGradeFilter = parsed.audioGradeFilter;
+          this.saveAudioGradeFilter();
+          this.updateAudioGradeFilterUI();
         }
         this.renderMasteryDashboard();
         soundEngine.playVictory();
