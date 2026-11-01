@@ -2,7 +2,8 @@
   "name": "Danh học IELTS & TOEIC Arena",
   "description": "Đấu trường luyện từ vựng IELTS Band 5.0-7.5+ & TOEIC 400-700 tốc độ cao với thuật toán Adaptive SRS, Chế độ Nghe Phát Âm, AI chuyển đề thi Ảnh/PDF/Word và Bảng thống kê Mastery Lv.1-Lv.5.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "microphone"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

@@ -93,6 +93,9 @@ class GameEngine {
     this.backgroundExamJobId = 0;
     this.masterySearchQuery = '';
     this.audioGradeFilter = this.loadAudioGradeFilter();
+    this.phoneticCoachCache = this.loadPhoneticCoachCache();
+    this.lastMispronouncedWord = '';
+    this.lastPhoneticCoachTip = '';
     this.currentGradeFilter = 'all'; // Mặc định luôn luôn là adaptive toàn diện theo yêu cầu người dùng
 
     this.initDOMElements();
@@ -571,6 +574,179 @@ class GameEngine {
         }
       });
     }
+  }
+
+  loadPhoneticCoachCache() {
+    try {
+      const saved = localStorage.getItem('ielts_phonetic_coach_cache_v1');
+      if (!saved) return {};
+      const parsed = JSON.parse(saved);
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  savePhoneticCoachCache() {
+    try {
+      localStorage.setItem('ielts_phonetic_coach_cache_v1', JSON.stringify(this.phoneticCoachCache || {}));
+    } catch (e) {}
+  }
+
+  // Bộ Phân Tích Âm Tiết, Trọng Âm & Cách Đặt Lưỡi / Khẩu Hình (AI Phonetic Coach 1-Line)
+  analyzeWordSyllablesAndTip(word, phonetic = '', spokenText = '') {
+    const raw = String(word || 'sustainable').trim().replace(/^to\s+/i, '');
+    const primaryToken = raw.split(/\s+/)[0].replace(/[^a-zA-Z-]/g, '').toLowerCase() || 'sustainable';
+
+    if (this.phoneticCoachCache && this.phoneticCoachCache[primaryToken]) {
+      return this.phoneticCoachCache[primaryToken];
+    }
+
+    const PHONETIC_STRESS_DB = {
+      sustainable: { syllables: ['sus', 'tain', 'a', 'ble'], stressIndex: 1, tip: 'mở rộng khẩu hình âm đôi /eɪ/, bật nhẹ âm cuối /-bəl/' },
+      comprehensive: { syllables: ['com', 'pre', 'hen', 'sive'], stressIndex: 2, tip: 'hạ nhẹ cằm ở âm /hen/, khép răng âm cuối /-sɪv/' },
+      mandatory: { syllables: ['man', 'da', 'to', 'ry'], stressIndex: 0, tip: 'mở rộng miệng âm /mæn/, lướt nhẹ các âm tiết sau' },
+      discrepancy: { syllables: ['dis', 'crep', 'an', 'cy'], stressIndex: 1, tip: 'bật rõ cụm phụ âm /kr/ ở âm tiết thứ 2' },
+      reimburse: { syllables: ['re', 'im', 'burse'], stressIndex: 2, tip: 'nhấn mạnh âm cuối /bɜːs/, cong nhẹ đầu lưỡi' },
+      stringent: { syllables: ['strin', 'gent'], stressIndex: 0, tip: 'bật cụm phụ âm đầu /str-/, âm cuối /-dʒənt/ rõ nét' },
+      contingent: { syllables: ['con', 'tin', 'gent'], stressIndex: 1, tip: 'đặt đầu lưỡi chạm nướu bật rõ âm /tɪn/' },
+      significant: { syllables: ['sig', 'nif', 'i', 'cant'], stressIndex: 1, tip: 'nhấn gọn âm /nɪf/, môi dưới chạm răng trên ở âm /f/' },
+      implement: { syllables: ['im', 'ple', 'ment'], stressIndex: 0, tip: 'nhấn dứt khoát âm đầu /ɪm/, khép hai môi rõ' },
+      negotiate: { syllables: ['ne', 'go', 'ti', 'ate'], stressIndex: 1, tip: 'tròn môi ở âm /ɡəʊ/, âm thứ 3 đọc nhẹ /ʃi/' },
+      proficient: { syllables: ['pro', 'fi', 'cient'], stressIndex: 1, tip: 'nhấn âm /fɪ/, chu nhẹ môi ở âm /ʃənt/' },
+      feasible: { syllables: ['fea', 'si', 'ble'], stressIndex: 0, tip: 'kéo căng khóe miệng âm dài /fiː/, rung dây thanh âm /z/' },
+      ubiquitous: { syllables: ['u', 'biq', 'ui', 'tous'], stressIndex: 1, tip: 'âm đầu đọc là /juː/, nhấn mạnh âm tiết 2 /bɪk/' },
+      precipitous: { syllables: ['pre', 'cip', 'i', 'tous'], stressIndex: 1, tip: 'nhấn mạnh âm /sɪp/, bật hơi nhẹ âm /p/' },
+      detrimental: { syllables: ['det', 'ri', 'men', 'tal'], stressIndex: 2, tip: 'nhấn rõ âm tiết thứ 3 /men/, đầu lưỡi chạm lợi âm /t/' },
+      mitigate: { syllables: ['mit', 'i', 'gate'], stressIndex: 0, tip: 'nhấn gọn âm đầu /mɪt/, mở miệng âm đôi /ɡeɪt/ ở cuối' },
+      environment: { syllables: ['en', 'vi', 'ron', 'ment'], stressIndex: 1, tip: 'mở rộng khẩu hình âm đôi /vaɪ/, răng trên chạm môi dưới âm /v/' },
+      biodiversity: { syllables: ['bi', 'o', 'di', 'ver', 'si', 'ty'], stressIndex: 3, tip: 'nhấn mạnh âm thứ 4 /vɜː/, cong nhẹ lưỡi' },
+      infrastructure: { syllables: ['in', 'fra', 'struc', 'ture'], stressIndex: 0, tip: 'nhấn âm đầu /ɪn/, bật cụm /strʌk/ rõ ràng' },
+      itinerary: { syllables: ['i', 'tin', 'er', 'a', 'ry'], stressIndex: 1, tip: 'âm đầu đọc /aɪ/, nhấn mạnh âm tiết thứ 2 /tɪn/' },
+      warranty: { syllables: ['war', 'ran', 'ty'], stressIndex: 0, tip: 'tròn môi âm đầu /wɔː/, lướt nhẹ hai âm sau' },
+      vacancy: { syllables: ['va', 'can', 'cy'], stressIndex: 0, tip: 'mở miệng âm đôi /veɪ/, răng trên chạm nhẹ môi dưới' },
+      schedule: { syllables: ['sched', 'ule'], stressIndex: 0, tip: 'bật âm đầu /sked-/ hoặc /ʃed-/, uốn nhẹ lưỡi âm cuối' },
+      renewable: { syllables: ['re', 'new', 'a', 'ble'], stressIndex: 1, tip: 'nhấn mạnh âm tiết thứ 2 /njuː/, tròn môi' },
+      pollution: { syllables: ['pol', 'lu', 'tion'], stressIndex: 1, tip: 'nhấn âm tiết 2 /luː/, chu nhẹ môi ở đuôi /-ʃən/' },
+      qualification: { syllables: ['qual', 'i', 'fi', 'ca', 'tion'], stressIndex: 3, tip: 'nhấn mạnh âm thứ 4 /keɪ/ ngay trước đuôi -tion' },
+      concentrate: { syllables: ['con', 'cen', 'trate'], stressIndex: 0, tip: 'nhấn mạnh âm đầu /kɒn/, bật rõ cụm /tr/ ở cuối' },
+      punctual: { syllables: ['punc', 'tu', 'al'], stressIndex: 0, tip: 'nhấn âm đầu /pʌŋk/, âm giữa đọc /tʃu/' }
+    };
+
+    const preset = PHONETIC_STRESS_DB[primaryToken];
+    let syllables = [];
+    let stressIndex = 0;
+    let articulationTip = 'mở rõ khẩu hình ở âm tiết mang dấu nhấn';
+
+    if (preset) {
+      syllables = [...preset.syllables];
+      stressIndex = preset.stressIndex;
+      articulationTip = preset.tip;
+    } else {
+      // Tách âm tiết tự động theo cụm nguyên âm tiếng Anh
+      const cleanNoSilentE = primaryToken.length > 4 && /[^aeiou]e$/i.test(primaryToken) && !/(le|re)$/i.test(primaryToken)
+        ? primaryToken.slice(0, -1)
+        : primaryToken;
+      const chunks = cleanNoSilentE.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
+      if (chunks && chunks.length > 0) {
+        syllables = chunks.map(s => s.toLowerCase());
+        if (cleanNoSilentE.length < primaryToken.length) {
+          syllables[syllables.length - 1] += primaryToken.slice(-1);
+        }
+      } else {
+        syllables = [primaryToken];
+      }
+
+      // Ưu tiên dò dấu nhấn trọng âm ˈ trong phiên âm IPA nếu có
+      const ipa = String(phonetic || '').replace(/^\/|\/$/g, '').trim();
+      if (ipa && ipa.includes('ˈ') && syllables.length > 1) {
+        const beforeStress = ipa.split('ˈ')[0];
+        const vowelMatches = beforeStress.match(/[ɑæʌɔaɪiɛeʊuɜəɒ]+/g);
+        const estimatedIdx = vowelMatches ? vowelMatches.length : 0;
+        stressIndex = Math.min(syllables.length - 1, Math.max(0, estimatedIdx));
+      } else if (syllables.length > 1 && /(tion|sion|ic|ical|ity|ety|cient|tial|cial)$/i.test(primaryToken)) {
+        stressIndex = Math.max(0, syllables.length - 2);
+      } else if (syllables.length >= 3 && /(able|ible|ment|ness|ous|ive|ate|ary|ory|ize|ise|fy)$/i.test(primaryToken)) {
+        stressIndex = Math.max(0, syllables.length - 3);
+      } else if (syllables.length === 2 && /^(re|de|pre|con|com|in|im|ex|sub|pro|per|ob|ad|al|en|em|dis|un|mis)/i.test(primaryToken)) {
+        stressIndex = 1;
+      } else {
+        stressIndex = 0;
+      }
+
+      const stressedSyl = syllables[stressIndex] || syllables[0] || '';
+      if (/^(th)/i.test(stressedSyl)) {
+        articulationTip = 'đặt nhẹ đầu lưỡi giữa hai hàm răng ở âm /θ, ð/';
+      } else if (/^(str|spr|spl|scr|pl|pr|tr|cr|br|gr|fl|fr)/i.test(stressedSyl)) {
+        articulationTip = 'đặt đầu lưỡi chạm vòm lợi bật rõ cụm phụ âm đầu';
+      } else if (/(tion|sion|cient|tial|cial|sh)/i.test(primaryToken)) {
+        articulationTip = 'chu nhẹ môi đẩy hơi êm ở âm /ʃ/';
+      } else if (/[aeiou]{2}|ai|ay|ea|ee|oa|oo/i.test(stressedSyl)) {
+        articulationTip = `mở rộng khẩu hình ngân rõ âm "${stressedSyl.toUpperCase()}"`;
+      } else {
+        articulationTip = `hạ nhẹ hàm và bật rõ âm "${stressedSyl.toUpperCase()}"`;
+      }
+    }
+
+    const formattedSyllables = syllables
+      .map((s, idx) => (idx === stressIndex ? s.toUpperCase() : s.toLowerCase()))
+      .join('-');
+    const humanOrder = stressIndex + 1;
+    const oneLineCoachTip = syllables.length > 1
+      ? `Nhấn mạnh âm tiết thứ ${humanOrder}: ${formattedSyllables} (${articulationTip})`
+      : `Bật rõ khẩu hình từ: ${primaryToken.toUpperCase()} (${articulationTip})`;
+
+    const result = {
+      word: primaryToken,
+      syllables,
+      stressIndex,
+      formattedSyllables,
+      articulationTip,
+      oneLineCoachTip
+    };
+
+    if (!this.phoneticCoachCache) this.phoneticCoachCache = {};
+    this.phoneticCoachCache[primaryToken] = result;
+    this.savePhoneticCoachCache();
+    return result;
+  }
+
+  async fetchAIPhoneticCoachTip(q, mispronouncedWord, spokenText, onUpdate) {
+    const cleanWord = String(mispronouncedWord || (q && (q.voiceTargetWord || q.target_word)) || 'sustainable').trim();
+    const key = cleanWord.toLowerCase();
+    try {
+      if (typeof fetch !== 'function') return null;
+      const res = await fetch('/api/phonetic-coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetWord: cleanWord,
+          targetPhrase: (q && q.voicePhrase) || cleanWord,
+          phonetic: (q && q.phonetic) || '',
+          spokenText: String(spokenText || '')
+        })
+      });
+      if (!res || !res.ok) return null;
+      const data = await res.json();
+      if (data && data.oneLineCoachTip && data.formattedSyllables) {
+        const enriched = {
+          word: key,
+          syllables: Array.isArray(data.syllables) ? data.syllables : [key],
+          stressIndex: typeof data.stressIndex === 'number' ? data.stressIndex : 0,
+          formattedSyllables: data.formattedSyllables,
+          articulationTip: data.articulationTip || '',
+          oneLineCoachTip: data.oneLineCoachTip
+        };
+        if (!this.phoneticCoachCache) this.phoneticCoachCache = {};
+        this.phoneticCoachCache[key] = enriched;
+        this.savePhoneticCoachCache();
+        if (typeof onUpdate === 'function') {
+          onUpdate(enriched);
+        }
+        return enriched;
+      }
+    } catch (e) {}
+    return null;
   }
 
   loadCustomExamBank() {
@@ -2208,6 +2384,7 @@ class GameEngine {
     }
 
     const voiceTokens = voicePhrase.split(/\s+/).filter(Boolean);
+    const coachMeta = this.analyzeWordSyllablesAndTip(cleanTarget, baseQ.phonetic || '');
 
     return {
       ...baseQ,
@@ -2216,6 +2393,10 @@ class GameEngine {
       voiceTargetWord: cleanTarget,
       voicePhrase,
       voiceTokens,
+      voiceSyllables: coachMeta.syllables,
+      voiceStressIndex: coachMeta.stressIndex,
+      voiceFormattedSyllables: coachMeta.formattedSyllables,
+      voiceCoachTip: coachMeta.oneLineCoachTip,
       prompt: '🎙️ Phát âm chuẩn từ vựng hoặc cụm từ ngắn dưới đây:'
     };
   }
@@ -3154,9 +3335,12 @@ class GameEngine {
     this.answersContainer.innerHTML = '';
     this.letterBoxContainer.innerHTML = '';
 
+    const targetWord = q.voiceTargetWord || q.target_word || 'sustainable';
+    const coachMeta = this.analyzeWordSyllablesAndTip(targetWord, q.phonetic || '');
+
     const tokens = Array.isArray(q.voiceTokens) && q.voiceTokens.length > 0
       ? q.voiceTokens
-      : ['We', 'practice', q.voiceTargetWord || q.target_word || 'vocabulary', 'today'];
+      : ['We', 'practice', targetWord, 'today'];
 
     const tokenEls = [];
     tokens.forEach((wordStr, idx) => {
@@ -3166,6 +3350,13 @@ class GameEngine {
       if (!span.dataset) span.dataset = {};
       span.dataset.tokenIndex = String(idx);
       span.dataset.word = wordStr.toLowerCase().replace(/[^a-z]/g, '');
+      span.title = `Chạm để nghe phát âm từ "${wordStr}"`;
+      span.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        if (typeof speechEngine !== 'undefined') {
+          speechEngine.speakWord(wordStr, 0.86);
+        }
+      });
       tokenEls.push(span);
       this.letterBoxContainer.appendChild(span);
     });
@@ -3174,10 +3365,53 @@ class GameEngine {
     const arena = document.createElement('div');
     arena.className = 'voice-check-arena';
 
+    // Dải tách âm tiết & trọng âm trực quan (Syllable Breakdown Bar: ví dụ sus - TAIN - a - ble)
+    const syllableStrip = document.createElement('div');
+    syllableStrip.className = 'voice-syllable-strip';
+    syllableStrip.id = 'voice-syllable-strip';
+    const sylLabel = document.createElement('span');
+    sylLabel.className = 'voice-syllable-label';
+    sylLabel.textContent = 'Âm tiết & Trọng âm:';
+    syllableStrip.appendChild(sylLabel);
+
+    const syllableEls = [];
+    (coachMeta.syllables || [targetWord]).forEach((syl, sIdx) => {
+      if (sIdx > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'voice-syllable-sep';
+        sep.textContent = '•';
+        syllableStrip.appendChild(sep);
+      }
+      const sylChip = document.createElement('button');
+      sylChip.type = 'button';
+      const isStressed = sIdx === coachMeta.stressIndex;
+      sylChip.className = `voice-syllable-chip${isStressed ? ' stressed-syllable' : ''}`;
+      sylChip.textContent = isStressed ? syl.toUpperCase() : syl.toLowerCase();
+      sylChip.title = isStressed
+        ? `Âm tiết thứ ${sIdx + 1} nhấn trọng âm chính (${syl.toUpperCase()}) - Chạm để nghe chậm`
+        : `Âm tiết thứ ${sIdx + 1} (${syl}) - Chạm để nghe chậm`;
+      sylChip.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        if (typeof speechEngine !== 'undefined') {
+          speechEngine.speakWord(targetWord, 0.75);
+        }
+      });
+      syllableEls.push(sylChip);
+      syllableStrip.appendChild(sylChip);
+    });
+    this.currentVoiceSyllableEls = syllableEls;
+
     const statusLine = document.createElement('div');
     statusLine.className = 'voice-status-line';
     statusLine.id = 'voice-status-line';
-    statusLine.innerHTML = `<span>🎙️ Chạm Micro để đọc từ hoặc cả cụm từ</span>`;
+    statusLine.innerHTML = `<span>🎙️ Chạm Micro để đọc (Nhấn rõ: <strong>${coachMeta.formattedSyllables}</strong>)</span>`;
+
+    // Hộp AI Phonetic Coach 1 dòng (Hiển thị cách đặt lưỡi / trọng âm + nút phát lại đúng từ bị đọc lệch)
+    const aiCoachBanner = document.createElement('div');
+    aiCoachBanner.className = 'voice-ai-coach-banner';
+    aiCoachBanner.id = 'voice-ai-coach-banner';
+    aiCoachBanner.style.display = 'none';
+    this.currentVoiceCoachBanner = aiCoachBanner;
 
     const micBtn = document.createElement('button');
     micBtn.type = 'button';
@@ -3224,10 +3458,28 @@ class GameEngine {
       this.evaluateVoicePronunciation(q, sampleSpoken, statusLine);
     });
 
+    const btnSimMispronounce = document.createElement('button');
+    btnSimMispronounce.type = 'button';
+    btnSimMispronounce.className = 'btn-voice-secondary btn-voice-coach-test';
+    btnSimMispronounce.id = 'btn-voice-sim-mispronounce';
+    btnSimMispronounce.innerHTML = '🎯 Thử AI sửa lỗi';
+    btnSimMispronounce.title = 'Giả lập đọc lệch từ khóa để xem AI Phonetic Coach chỉ cách đặt lưỡi & phát lại từ sai';
+    btnSimMispronounce.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('light');
+      const misSpoken = tokens
+        .map(t => (t.toLowerCase().replace(/[^a-z]/g, '') === targetWord.toLowerCase().replace(/[^a-z]/g, '') ? 'wrongsound' : t))
+        .join(' ');
+      this.evaluateVoicePronunciation(q, misSpoken, statusLine);
+    });
+
     quickActions.appendChild(btnListen);
     quickActions.appendChild(btnSimSpeak);
+    quickActions.appendChild(btnSimMispronounce);
 
+    arena.appendChild(syllableStrip);
     arena.appendChild(statusLine);
+    arena.appendChild(aiCoachBanner);
     arena.appendChild(micBtn);
     arena.appendChild(quickActions);
 
@@ -3235,7 +3487,6 @@ class GameEngine {
 
     // Tự động phát âm mẫu khi vào câu hỏi
     setTimeout(() => {
-      const targetWord = q.voiceTargetWord || q.target_word;
       if (typeof speechEngine !== 'undefined' && targetWord && !this.isAnsweringLocked) {
         speechEngine.speakWord(targetWord, 0.92);
       }
@@ -3247,7 +3498,11 @@ class GameEngine {
     const b = String(strB || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
     if (!a || !b) return 0;
     if (a === b) return 1;
-    if (a.includes(b) || b.includes(a)) return 0.92;
+    const minLen = Math.min(a.length, b.length);
+    const maxLen = Math.max(a.length, b.length);
+    if (minLen >= 4 && minLen / maxLen >= 0.7 && (a.includes(b) || b.includes(a))) {
+      return 0.92;
+    }
 
     const lenA = a.length;
     const lenB = b.length;
@@ -3265,7 +3520,6 @@ class GameEngine {
         );
       }
     }
-    const maxLen = Math.max(lenA, lenB);
     return maxLen > 0 ? Math.max(0, 1 - dp[lenA][lenB] / maxLen) : 0;
   }
 
@@ -3285,7 +3539,7 @@ class GameEngine {
       micBtn.classList.add('listening');
     }
     if (statusLine) {
-      statusLine.innerHTML = `<span style="color:#34d399;">🎙️ Đang lắng nghe giọng đọc của bạn...</span>`;
+      statusLine.innerHTML = `<span style="color:#34d399;">🎙️ Đang lắng nghe từng âm tiết của bạn...</span>`;
     }
 
     if (!SpeechRecognitionAPI) {
@@ -3340,7 +3594,7 @@ class GameEngine {
         handled = true;
         if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
         if (statusLine) {
-          statusLine.innerHTML = `<span style="color:#fbbf24;">💡 Không nghe rõ mic — Chạm "✨ Đọc chuẩn mẫu" hoặc thử lại</span>`;
+          statusLine.innerHTML = `<span style="color:#fbbf24;">💡 Không nghe rõ mic — Chạm "✨ Đọc chuẩn mẫu" hoặc "🎯 Thử AI sửa lỗi"</span>`;
         }
       };
 
@@ -3360,11 +3614,9 @@ class GameEngine {
     if (this.isAnsweringLocked) return;
 
     const cleanSpoken = String(spokenText || '').trim();
-    const targetWord = String(q.voiceTargetWord || q.target_word || '').trim();
+    const targetWord = String(q.voiceTargetWord || q.target_word || 'sustainable').trim();
+    const cleanTargetAlpha = targetWord.toLowerCase().replace(/[^a-z]/g, '');
     const targetPhrase = String(q.voicePhrase || targetWord).trim();
-
-    const simWord = this.computeTextSimilarity(cleanSpoken, targetWord);
-    const simPhrase = this.computeTextSimilarity(cleanSpoken, targetPhrase);
 
     const spokenWords = cleanSpoken.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
     const tokens = Array.isArray(q.voiceTokens) && q.voiceTokens.length > 0
@@ -3372,23 +3624,71 @@ class GameEngine {
       : [targetWord];
 
     let matchedCount = 0;
+    let targetWordMatched = false;
+    const missedWords = [];
     const tokenEls = this.currentVoiceTokenEls || [];
+
     tokens.forEach((tok, idx) => {
       const cleanTok = tok.toLowerCase().replace(/[^a-z]/g, '');
       const isMatched = spokenWords.some(sw => this.computeTextSimilarity(sw, cleanTok) >= 0.72)
-        || this.computeTextSimilarity(cleanSpoken, cleanTok) >= 0.75;
-      if (isMatched) matchedCount++;
+        || (spokenWords.length === 1 && this.computeTextSimilarity(cleanSpoken, cleanTok) >= 0.76);
+      if (isMatched) {
+        matchedCount++;
+        if (cleanTok === cleanTargetAlpha) targetWordMatched = true;
+      } else {
+        missedWords.push(tok);
+      }
       const el = tokenEls[idx];
       if (el && el.classList) {
-        el.classList.remove('spoken-match', 'spoken-miss');
+        el.classList.remove('spoken-match', 'spoken-miss', 'shake-miss');
         el.classList.add(isMatched ? 'spoken-match' : 'spoken-miss');
+        if (!isMatched) {
+          el.classList.add('shake-miss');
+        }
       }
     });
 
+    const simWord = spokenWords.length > 0
+      ? Math.max(...spokenWords.map(sw => this.computeTextSimilarity(sw, cleanTargetAlpha)), this.computeTextSimilarity(cleanSpoken, targetWord))
+      : 0;
+    if (simWord >= 0.75) {
+      targetWordMatched = true;
+    }
+
+    const simPhrase = this.computeTextSimilarity(cleanSpoken, targetPhrase);
     const tokenRatio = tokens.length > 0 ? matchedCount / tokens.length : 0;
-    const rawScore = Math.max(simWord, simPhrase, tokenRatio);
+
+    // Nếu từ khóa mục tiêu chính bị đọc sai (targetWordMatched === false) thì tính điểm nghiêm ngặt để kích hoạt AI Phonetic Coach sửa lỗi
+    const rawScore = targetWordMatched
+      ? Math.max(simWord, simPhrase, tokenRatio)
+      : Math.min(0.58, (tokenRatio * 0.5) + (simWord * 0.3));
     const accuracyPct = Math.min(100, Math.max(0, Math.round(rawScore * 100)));
-    const isCorrect = accuracyPct >= 65;
+    const isCorrect = accuracyPct >= 65 && targetWordMatched;
+
+    // Xác định chính xác từ bị đọc lệch (ưu tiên từ mục tiêu nếu đọc sai từ mục tiêu)
+    const mispronouncedWord = !targetWordMatched
+      ? targetWord
+      : (missedWords[0] || targetWord);
+    const coachData = this.analyzeWordSyllablesAndTip(mispronouncedWord, q.phonetic || '', cleanSpoken);
+
+    q.lastMispronouncedWord = isCorrect && missedWords.length === 0 ? '' : mispronouncedWord;
+    q.lastVoiceCoachTip = coachData.oneLineCoachTip;
+    q.lastFormattedSyllables = coachData.formattedSyllables;
+    this.lastMispronouncedWord = q.lastMispronouncedWord;
+    this.lastPhoneticCoachTip = coachData.oneLineCoachTip;
+
+    // Cập nhật dải âm tiết & trọng âm nếu từ bị lệch có tách âm tiết
+    if (Array.isArray(this.currentVoiceSyllableEls) && this.currentVoiceSyllableEls.length > 0) {
+      this.currentVoiceSyllableEls.forEach((chipEl, sIdx) => {
+        if (!chipEl || !chipEl.classList) return;
+        chipEl.classList.remove('stress-error-pulse', 'stress-match-glow');
+        if (isCorrect) {
+          chipEl.classList.add('stress-match-glow');
+        } else if (sIdx === coachData.stressIndex) {
+          chipEl.classList.add('stress-error-pulse');
+        }
+      });
+    }
 
     const statusLine = statusLineEl || (this.answersContainer && this.answersContainer.querySelector
       ? this.answersContainer.querySelector('#voice-status-line')
@@ -3398,6 +3698,36 @@ class GameEngine {
         <span>🎙️ Bạn đọc: <strong>“${cleanSpoken || '...'}”</strong></span>
         <span class="voice-score-pill">${accuracyPct}%</span>
       `;
+    }
+
+    // Hiển thị 1 dòng hướng dẫn AI Phonetic Coach ngay trên màn hình Luyện Phát Âm
+    const coachBanner = this.currentVoiceCoachBanner || (this.answersContainer && this.answersContainer.querySelector
+      ? this.answersContainer.querySelector('#voice-ai-coach-banner')
+      : null);
+    if (coachBanner) {
+      coachBanner.style.display = 'flex';
+      if (isCorrect && missedWords.length === 0) {
+        coachBanner.className = 'voice-ai-coach-banner coach-pass';
+        coachBanner.innerHTML = `
+          <span class="coach-one-line-text">✨ Chuẩn trọng âm: <strong>${coachData.formattedSyllables}</strong></span>
+        `;
+      } else {
+        coachBanner.className = 'voice-ai-coach-banner coach-fix';
+        coachBanner.innerHTML = `
+          <span class="coach-one-line-text">🎙️ ${coachData.oneLineCoachTip}</span>
+          <button type="button" class="btn-coach-replay-word" id="btn-coach-replay-word" title="Phát lại từ bị đọc lệch">🔊 ${mispronouncedWord}</button>
+        `;
+        const replayMisBtn = coachBanner.querySelector ? coachBanner.querySelector('#btn-coach-replay-word') : null;
+        if (replayMisBtn && typeof replayMisBtn.addEventListener === 'function') {
+          replayMisBtn.addEventListener('click', (e) => {
+            if (e && e.stopPropagation) e.stopPropagation();
+            this.triggerHaptic('light');
+            if (typeof speechEngine !== 'undefined') {
+              speechEngine.speakWord(mispronouncedWord, 0.8);
+            }
+          });
+        }
+      }
     }
 
     this.isAnsweringLocked = true;
@@ -3411,7 +3741,7 @@ class GameEngine {
     if (isCorrect) {
       tokenEls.forEach(el => {
         if (el && el.classList) {
-          el.classList.remove('spoken-miss');
+          el.classList.remove('spoken-miss', 'shake-miss');
           el.classList.add('spoken-match');
         }
       });
@@ -3422,14 +3752,41 @@ class GameEngine {
       this.renderSegmentedRoundBar();
       this.showFeedbackDrawer(true, q, false, retentionRate);
     } else {
+      // KÍCH HOẠT PHẢN HỒI RUNG CẢNH BÁO + PHÁT LẠI ĐÚNG TỪ BỊ ĐỌC LỆCH + GỌI AI COACH
       this.triggerHaptic('error');
       this.handleWrongAnswer(false);
       this.roundResults.push(false);
       this.recordDailyAnswer(false);
       this.renderSegmentedRoundBar();
       this.showFeedbackDrawer(false, q, false, retentionRate);
+
+      // Tự động phát lại đúng từ bị đọc lệch với tốc độ rõ từng âm tiết (0.82x)
+      if (typeof speechEngine !== 'undefined' && mispronouncedWord) {
+        speechEngine.speakWord(mispronouncedWord, 0.82);
+      }
+
+      // Đồng bộ thêm với AI Gemini Phonetic Coach trên server (lưu LocalStorage để 0ms cho các lần sau)
+      this.fetchAIPhoneticCoachTip(q, mispronouncedWord, cleanSpoken, (aiCoach) => {
+        if (!aiCoach || !aiCoach.oneLineCoachTip) return;
+        q.lastVoiceCoachTip = aiCoach.oneLineCoachTip;
+        q.lastFormattedSyllables = aiCoach.formattedSyllables;
+        this.lastPhoneticCoachTip = aiCoach.oneLineCoachTip;
+        if (coachBanner && coachBanner.querySelector) {
+          const textEl = coachBanner.querySelector('.coach-one-line-text');
+          if (textEl) textEl.textContent = `🎙️ ${aiCoach.oneLineCoachTip}`;
+        }
+        if (this.feedbackExplanation && this.questions[this.currentIndex] === q) {
+          this.feedbackExplanation.textContent = `🎙️ AI Coach: ${aiCoach.oneLineCoachTip}`;
+        }
+      });
     }
-    return { isCorrect, accuracyPct };
+    return {
+      isCorrect,
+      accuracyPct,
+      mispronouncedWord,
+      formattedSyllables: coachData.formattedSyllables,
+      coachTip: coachData.oneLineCoachTip
+    };
   }
 
   renderLetterBoxes(maskedStr) {
@@ -3865,13 +4222,20 @@ class GameEngine {
         setTimeout(() => replayBtn.classList.remove('playing'), 900);
         const word = (q.mode === 'sentence_order' && q.targetSentence)
           ? q.targetSentence
-          : (q.target_word || (q.options && q.options[q.correct]) || '');
-        if (typeof speechEngine !== 'undefined') speechEngine.speakWord(word);
+          : ((q.mode === 'voice_check' && q.lastMispronouncedWord)
+              ? q.lastMispronouncedWord
+              : (q.target_word || (q.options && q.options[q.correct]) || ''));
+        if (typeof speechEngine !== 'undefined') speechEngine.speakWord(word, q.mode === 'voice_check' ? 0.84 : 0.92);
       });
     }
 
     if (this.feedbackExplanation) {
-      if ((q.category === 'custom_exam' || q.is_custom_exam) && q.explanation) {
+      if ((q.mode === 'voice_check' || q.isVoiceCheck) && (q.lastVoiceCoachTip || q.voiceCoachTip)) {
+        const tipStr = q.lastVoiceCoachTip || q.voiceCoachTip;
+        this.feedbackExplanation.textContent = isCorrect
+          ? `🎙️ Chuẩn âm tiết (${q.lastFormattedSyllables || q.voiceFormattedSyllables || q.target_word}) • ${tipStr}`
+          : `🎙️ AI Coach: ${tipStr}`;
+      } else if ((q.category === 'custom_exam' || q.is_custom_exam) && q.explanation) {
         this.feedbackExplanation.textContent = `🤖 AI Giải thích: ${q.explanation}`;
       } else if (q.mode === 'sentence_order' && q.targetSentence) {
         const shortExp = q.explanation ? ` • 💡 ${q.explanation}` : '';
@@ -4335,20 +4699,11 @@ ${emojiBlocks}
     if (this.btnSentenceOrderMode && this.btnSentenceOrderMode.classList) {
       this.btnSentenceOrderMode.classList.toggle('active-mode', this.currentGradeFilter === 'sentence_order');
     }
-    if (this.badgeGameSentenceOrder) {
-      this.badgeGameSentenceOrder.textContent = this.currentGradeFilter === 'sentence_order' ? 'Đang chơi ✓' : '30s';
-    }
     if (this.btnAudioQuizMode && this.btnAudioQuizMode.classList) {
       this.btnAudioQuizMode.classList.toggle('active-mode', this.currentGradeFilter === 'audio');
     }
-    if (this.badgeGameAudioQuiz) {
-      this.badgeGameAudioQuiz.textContent = this.currentGradeFilter === 'audio' ? 'Đang chơi ✓' : 'Nghe AI';
-    }
     if (this.btnVoiceCheckMode && this.btnVoiceCheckMode.classList) {
       this.btnVoiceCheckMode.classList.toggle('active-mode', this.currentGradeFilter === 'voice_check');
-    }
-    if (this.badgeGameVoiceCheck) {
-      this.badgeGameVoiceCheck.textContent = this.currentGradeFilter === 'voice_check' ? 'Đang chơi ✓' : 'Chấm giọng';
     }
     if (this.btnExamImport && this.btnExamImport.classList) {
       this.btnExamImport.classList.toggle('active-mode', this.currentGradeFilter === 'custom_exam');
@@ -5735,7 +6090,8 @@ A. eligible   B. confidential   C. prospective   D. stringent`;
         dailyTracker: this.dailyTracker || {},
         customExamBank: (this.customExamBank || []).slice(0, 60),
         savedExamsHistory: this.savedExamsHistory || [],
-        audioGradeFilter: this.audioGradeFilter || 'all'
+        audioGradeFilter: this.audioGradeFilter || 'all',
+        phoneticCoachCache: this.phoneticCoachCache || {}
       };
       const jsonStr = JSON.stringify(payload, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -5787,6 +6143,10 @@ A. eligible   B. confidential   C. prospective   D. stringent`;
           this.audioGradeFilter = parsed.audioGradeFilter;
           this.saveAudioGradeFilter();
           this.updateAudioGradeFilterUI();
+        }
+        if (parsed.phoneticCoachCache && typeof parsed.phoneticCoachCache === 'object') {
+          this.phoneticCoachCache = { ...(this.phoneticCoachCache || {}), ...parsed.phoneticCoachCache };
+          this.savePhoneticCoachCache();
         }
         this.renderMasteryDashboard();
         soundEngine.playVictory();

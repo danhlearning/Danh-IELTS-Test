@@ -650,6 +650,158 @@ A. eligible   B. confidential   C. prospective   D. stringent`;
   });
 }
 
+const SERVER_PHONETIC_STRESS_DICT = {
+  sustainable: { syllables: ['sus', 'tain', 'a', 'ble'], stressIndex: 1, tip: 'mở rộng khẩu hình âm đôi /eɪ/, bật nhẹ âm cuối /-bəl/' },
+  comprehensive: { syllables: ['com', 'pre', 'hen', 'sive'], stressIndex: 2, tip: 'hạ nhẹ cằm ở âm /hen/, khép răng âm cuối /-sɪv/' },
+  mandatory: { syllables: ['man', 'da', 'to', 'ry'], stressIndex: 0, tip: 'mở rộng miệng âm /mæn/, lướt nhẹ các âm tiết sau' },
+  discrepancy: { syllables: ['dis', 'crep', 'an', 'cy'], stressIndex: 1, tip: 'bật rõ cụm phụ âm /kr/ ở âm tiết thứ 2' },
+  reimburse: { syllables: ['re', 'im', 'burse'], stressIndex: 2, tip: 'nhấn mạnh âm cuối /bɜːs/, cong nhẹ đầu lưỡi' },
+  stringent: { syllables: ['strin', 'gent'], stressIndex: 0, tip: 'bật cụm phụ âm đầu /str-/, âm cuối /-dʒənt/ rõ nét' },
+  contingent: { syllables: ['con', 'tin', 'gent'], stressIndex: 1, tip: 'đặt đầu lưỡi chạm nướu bật rõ âm /tɪn/' },
+  significant: { syllables: ['sig', 'nif', 'i', 'cant'], stressIndex: 1, tip: 'nhấn gọn âm /nɪf/, môi dưới chạm răng trên ở âm /f/' },
+  implement: { syllables: ['im', 'ple', 'ment'], stressIndex: 0, tip: 'nhấn dứt khoát âm đầu /ɪm/, khép hai môi rõ' },
+  negotiate: { syllables: ['ne', 'go', 'ti', 'ate'], stressIndex: 1, tip: 'tròn môi ở âm /ɡəʊ/, âm thứ 3 đọc nhẹ /ʃi/' },
+  proficient: { syllables: ['pro', 'fi', 'cient'], stressIndex: 1, tip: 'nhấn âm /fɪ/, chu nhẹ môi ở âm /ʃənt/' },
+  feasible: { syllables: ['fea', 'si', 'ble'], stressIndex: 0, tip: 'kéo căng khóe miệng âm dài /fiː/, rung dây thanh âm /z/' },
+  ubiquitous: { syllables: ['u', 'biq', 'ui', 'tous'], stressIndex: 1, tip: 'âm đầu đọc là /juː/, nhấn mạnh âm tiết 2 /bɪk/' },
+  precipitous: { syllables: ['pre', 'cip', 'i', 'tous'], stressIndex: 1, tip: 'nhấn mạnh âm /sɪp/, bật hơi nhẹ âm /p/' },
+  detrimental: { syllables: ['det', 'ri', 'men', 'tal'], stressIndex: 2, tip: 'nhấn rõ âm tiết thứ 3 /men/, đầu lưỡi chạm lợi âm /t/' },
+  mitigate: { syllables: ['mit', 'i', 'gate'], stressIndex: 0, tip: 'nhấn gọn âm đầu /mɪt/, mở miệng âm đôi /ɡeɪt/ ở cuối' },
+  environment: { syllables: ['en', 'vi', 'ron', 'ment'], stressIndex: 1, tip: 'mở rộng khẩu hình âm đôi /vaɪ/, răng trên chạm môi dưới âm /v/' },
+  biodiversity: { syllables: ['bi', 'o', 'di', 'ver', 'si', 'ty'], stressIndex: 3, tip: 'nhấn mạnh âm thứ 4 /vɜː/, cong nhẹ lưỡi' },
+  infrastructure: { syllables: ['in', 'fra', 'struc', 'ture'], stressIndex: 0, tip: 'nhấn âm đầu /ɪn/, bật cụm /strʌk/ rõ ràng' },
+  itinerary: { syllables: ['i', 'tin', 'er', 'a', 'ry'], stressIndex: 1, tip: 'âm đầu đọc /aɪ/, nhấn mạnh âm tiết thứ 2 /tɪn/' },
+  warranty: { syllables: ['war', 'ran', 'ty'], stressIndex: 0, tip: 'tròn môi âm đầu /wɔː/, lướt nhẹ hai âm sau' },
+  vacancy: { syllables: ['va', 'can', 'cy'], stressIndex: 0, tip: 'mở miệng âm đôi /veɪ/, răng trên chạm nhẹ môi dưới' }
+};
+
+function buildLocalPhoneticAnalysis(targetWord, phonetic = '', spokenText = '') {
+  const cleanWord = String(targetWord || 'sustainable').trim().replace(/^to\s+/i, '').split(/\s+/)[0].replace(/[^a-zA-Z-]/g, '').toLowerCase() || 'sustainable';
+  const preset = SERVER_PHONETIC_STRESS_DICT[cleanWord];
+  let syllables = [];
+  let stressIndex = 0;
+  let mouthTip = 'mở rõ khẩu hình ở âm tiết mang dấu nhấn';
+
+  if (preset) {
+    syllables = [...preset.syllables];
+    stressIndex = preset.stressIndex;
+    mouthTip = preset.tip;
+  } else {
+    const chunks = cleanWord.match(/[^aeiouy]*[aeiouy]+(?:[^aeiouy]*$|[^aeiouy](?=[^aeiouy]))?/gi);
+    syllables = (chunks && chunks.length > 0) ? chunks.map(s => s.toLowerCase()) : [cleanWord];
+    if (syllables.length > 1 && /(tion|sion|ic|ical|ity|ety|cient|tial|cial)$/i.test(cleanWord)) {
+      stressIndex = Math.max(0, syllables.length - 2);
+    } else if (syllables.length >= 3 && /(able|ible|ment|ness|ous|ive|ate|ary|ory)$/i.test(cleanWord)) {
+      stressIndex = Math.max(0, syllables.length - 3);
+    } else if (syllables.length === 2 && /^(re|de|pre|con|com|in|im|ex|sub|pro|per|ob|ad|al|en|em)/i.test(cleanWord)) {
+      stressIndex = 1;
+    } else {
+      stressIndex = 0;
+    }
+    const stressedSyl = syllables[stressIndex] || syllables[0] || '';
+    if (/[aeiou]{2}|ai|ay|ea|ee|oa|oo/i.test(stressedSyl)) {
+      mouthTip = `ngân rõ nguyên âm đôi ở âm "${stressedSyl.toUpperCase()}"`;
+    } else if (/^(str|spr|spl|scr|thr|sh|ch|th|pl|pr|tr|cr|br|gr|fl|fr)/i.test(stressedSyl)) {
+      mouthTip = `đặt đầu lưỡi sát vòm miệng để bật cụm phụ âm đầu`;
+    }
+  }
+
+  const formattedSyllables = syllables
+    .map((s, idx) => (idx === stressIndex ? s.toUpperCase() : s.toLowerCase()))
+    .join('-');
+  const humanOrder = stressIndex + 1;
+  const oneLineCoachTip = syllables.length > 1
+    ? `Nhấn mạnh âm tiết thứ ${humanOrder}: ${formattedSyllables} (${mouthTip})`
+    : `Bật rõ âm: ${cleanWord.toUpperCase()} (${mouthTip})`;
+
+  return {
+    word: cleanWord,
+    syllables,
+    stressIndex,
+    formattedSyllables,
+    articulationTip: mouthTip,
+    oneLineCoachTip
+  };
+}
+
+async function handlePhoneticCoachRequest(req, res) {
+  let bodyChunks = [];
+  req.on('data', chunk => bodyChunks.push(chunk));
+  req.on('end', async () => {
+    try {
+      const rawBody = Buffer.concat(bodyChunks).toString('utf-8');
+      const payload = JSON.parse(rawBody || '{}');
+      const targetWord = String(payload.targetWord || payload.word || 'sustainable').trim();
+      const targetPhrase = String(payload.targetPhrase || targetWord).trim();
+      const phonetic = String(payload.phonetic || '').trim();
+      const spokenText = String(payload.spokenText || '').trim();
+
+      const localFallback = buildLocalPhoneticAnalysis(targetWord, phonetic, spokenText);
+      const apiKey = process.env.GEMINI_API_KEY;
+
+      if (GoogleGenAI && apiKey) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey,
+            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+          });
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: `Từ mục tiêu cần đọc: "${targetWord}" (Phiên âm: ${phonetic || 'chuẩn quốc tế'}, Cụm từ: "${targetPhrase}"). Học sinh vừa đọc thành: "${spokenText || '(đọc lệch)'}". Hãy tách âm tiết của từ "${targetWord}", xác định âm tiết nhấn trọng âm và chỉ ra cách đặt lưỡi / mở khẩu hình trong ĐÚNG 1 DÒNG ngắn gọn (tối đa 16 chữ).`,
+            config: {
+              systemInstruction: `Bạn là chuyên gia huấn luyện phát âm tiếng Anh AI Phonetic Coach.
+Nhiệm vụ: Phân tích từ tiếng Anh học sinh vừa đọc sai hoặc đọc lệch âm tiết và trả về JSON.
+Quy tắc bắt buộc:
+1. "formattedSyllables": Tách từ mục tiêu thành các âm tiết nối bằng dấu gạch ngang "-", trong đó âm tiết nhấn trọng âm chính VIẾT IN HOA toàn bộ, các âm tiết còn lại viết thường (ví dụ: "sus-TAIN-a-ble", "com-pre-HEN-sive", "en-VI-ron-ment").
+2. "stressIndex": Chỉ số âm tiết nhấn trọng âm (bắt đầu từ 0).
+3. "articulationTip": Hướng dẫn cách đặt lưỡi / môi / khẩu hình cực ngắn gọn (dưới 10 từ tiếng Việt, ví dụ: "mở rộng khẩu hình âm /eɪ/", "đặt đầu lưỡi chạm răng trên âm /θ/").
+4. "oneLineCoachTip": Đúng 1 dòng ngắn gọn theo mẫu: "Nhấn mạnh âm tiết thứ X: [formattedSyllables] ([articulationTip])".`,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  word: { type: SchemaType.STRING },
+                  syllables: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                  stressIndex: { type: SchemaType.INTEGER },
+                  formattedSyllables: { type: SchemaType.STRING },
+                  articulationTip: { type: SchemaType.STRING },
+                  oneLineCoachTip: { type: SchemaType.STRING }
+                },
+                required: ['word', 'syllables', 'stressIndex', 'formattedSyllables', 'oneLineCoachTip']
+              }
+            }
+          });
+
+          const parsed = JSON.parse(response.text || '{}');
+          if (parsed && parsed.formattedSyllables && parsed.oneLineCoachTip) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+              success: true,
+              source: 'gemini-ai',
+              ...localFallback,
+              ...parsed
+            }));
+            return;
+          }
+        } catch (aiErr) {
+          // Fallback to deterministic local phonetic coach
+        }
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        success: true,
+        source: 'local-phonetic-coach',
+        ...localFallback
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Lỗi phân tích phát âm: ' + (err.message || 'Không xác định') }));
+    }
+  });
+}
+
 const server = http.createServer((req, res) => {
   // CORS & PWA headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -666,6 +818,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'POST' && reqPath === '/api/exam-import') {
     handleExamImportRequest(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/phonetic-coach') {
+    handlePhoneticCoachRequest(req, res);
     return;
   }
 

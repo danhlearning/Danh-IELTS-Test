@@ -542,6 +542,51 @@ const indexHtmlContent = fs.readFileSync(path.join(__dirname, 'index.html'), 'ut
 assert(indexHtmlContent.includes('id="btn-run-exam-convert"') && indexHtmlContent.includes('<span>Tạo Câu Hỏi</span>') && indexHtmlContent.includes('btn-create-questions-xl'), "Nút tạo câu hỏi đã đổi thành 'Tạo Câu Hỏi' với giao diện nút lớn (.btn-create-questions-xl)");
 assert(indexHtmlContent.includes('id="audio-grade-filter-bar"'), "Giao diện Luyện Nghe có thanh chọn phân loại theo Lớp (#audio-grade-filter-bar)");
 
+// ====================================================================
+// TEST SUITE 10: AI PHONETIC COACH (CHẤM PHÁT ÂM CHI TIẾT ĐẾN TỪNG ÂM TIẾT)
+// ====================================================================
+console.log("\n🎙️ TEST SUITE 10: AI Phonetic Coach (Tách Âm Tiết, Trọng Âm 1 Dòng, Rung & Phát Lại Từ Sai)");
+
+const susCoach = engine.analyzeWordSyllablesAndTip('sustainable', '/səˈsteɪnəbl/');
+assert(
+  susCoach.formattedSyllables === 'sus-TAIN-a-ble' && susCoach.stressIndex === 1 && susCoach.oneLineCoachTip.includes('Nhấn mạnh âm tiết thứ 2: sus-TAIN-a-ble'),
+  `Phân tích chuẩn âm tiết & trọng âm: "${susCoach.oneLineCoachTip}"`
+);
+
+const cachedCoachRaw = JSON.parse(localStorage.getItem('ielts_phonetic_coach_cache_v1') || '{}');
+assert(Boolean(cachedCoachRaw.sustainable && cachedCoachRaw.sustainable.formattedSyllables === 'sus-TAIN-a-ble'), "Lưu bộ nhớ đệm AI Phonetic Coach vào LocalStorage (ielts_phonetic_coach_cache_v1) để phản hồi 0ms");
+
+// Chuyển sang game Luyện phát âm (voice_check) và kiểm tra khi đọc sai từ khóa
+engine.setGradeFilter('voice_check');
+const vcCoachQ = engine.questions[0];
+vcCoachQ.voiceTargetWord = 'sustainable';
+vcCoachQ.target_word = 'sustainable';
+vcCoachQ.voicePhrase = 'This is a sustainable solution';
+vcCoachQ.voiceTokens = ['This', 'is', 'a', 'sustainable', 'solution'];
+engine.loadQuestion(0);
+
+const syllableChips = engine.answersContainer.querySelectorAll('.voice-syllable-chip');
+assert(syllableChips.length === 4 && syllableChips[1].classList.contains('stressed-syllable') && syllableChips[1].textContent === 'TAIN', "Hiển thị trực quan dải âm tiết 'sus • TAIN • a • ble' với âm tiết nhấn trọng âm nổi bật");
+
+// Theo dõi lệnh phát lại từ bị đọc lệch qua speechEngine.speakWord
+const spokenReplayCalls = [];
+const origSpeakWord = speechEngine.speakWord.bind(speechEngine);
+speechEngine.speakWord = (word, rate) => {
+  spokenReplayCalls.push({ word, rate });
+  return origSpeakWord(word, rate);
+};
+
+vibrateCalls.length = 0;
+const misEval = engine.evaluateVoicePronunciation(vcCoachQ, 'This is a wrongsound solution');
+
+assert(misEval.isCorrect === false && misEval.mispronouncedWord === 'sustainable', `AI phát hiện chính xác từ bị đọc lệch là "${misEval.mispronouncedWord}"`);
+assert(engine.lastHapticStyle === 'error' && vibrateCalls.length > 0, `Kích hoạt phản hồi rung cảnh báo khi đọc lệch âm tiết: [${vibrateCalls[vibrateCalls.length - 1]}]`);
+assert(spokenReplayCalls.some(c => c.word === 'sustainable'), `Tự động phát lại đúng từ bị đọc lệch ("sustainable") ở tốc độ chậm rõ âm tiết`);
+assert(
+  engine.feedbackExplanation.textContent.includes('🎙️ AI Coach: Nhấn mạnh âm tiết thứ 2: sus-TAIN-a-ble'),
+  `Hiển thị chỉ dẫn 1 dòng cách đặt lưỡi & trọng âm của AI Coach: "${engine.feedbackExplanation.textContent}"`
+);
+
 console.log("\n======================================================================");
 console.log(`🏁 KẾT QUẢ: ${passed}/${total} BÀI KIỂM ĐỊNH ADAPTIVE & TOEIC ĐẠT TUYỆT ĐỐI!`);
 console.log("======================================================================");
