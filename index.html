@@ -357,6 +357,43 @@
           </button>
         </div>
 
+        <!-- Chế độ Mini-Lesson 30 Giây (Tự động kích hoạt khi người chơi làm sai nhiều ở 1 chủ đề ngữ pháp cụ thể) -->
+        <div class="mini-lesson-overlay" id="mini-lesson-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="mini-lesson-title">
+          <div class="mini-lesson-card">
+            <div class="ml-top-bar">
+              <span class="ml-mode-badge">🎓 MINI-LESSON 30 GIÂY</span>
+              <div class="ml-timer-pill" id="mini-lesson-timer-pill">
+                <span class="ml-clock-icon">⏱️</span>
+                <span id="mini-lesson-seconds">30s</span>
+              </div>
+            </div>
+
+            <div class="ml-progress-track">
+              <div class="ml-progress-fill" id="mini-lesson-timer-bar"></div>
+            </div>
+
+            <h3 class="ml-topic-title" id="mini-lesson-title">🏷️ Trọng Tâm Từ Loại (Word Class)</h3>
+            <p class="ml-subtitle" id="mini-lesson-subtitle">Hệ thống nhận thấy bạn vừa nhầm chủ đề này — cùng nắm chắc quy tắc trong 30 giây nhé!</p>
+
+            <!-- Công thức cốt lõi 3 bước (Hiệu ứng chữ chạy trực quan) -->
+            <div class="ml-formula-section" id="mini-lesson-formula"></div>
+
+            <!-- Các điểm trọng tâm ngắn gọn, dễ nhớ -->
+            <div class="ml-keypoints-list" id="mini-lesson-keypoints"></div>
+
+            <!-- Thử nhanh 1 chạm (Quick Check củng cố trước khi quay lại bài tập chính) -->
+            <div class="ml-quick-check-box" id="mini-lesson-quick-check">
+              <div class="ml-qc-prompt" id="mini-lesson-qc-prompt">⚡ Chạm chọn nhanh quy tắc đúng (+50 XP):</div>
+              <div class="ml-qc-options" id="mini-lesson-qc-options"></div>
+            </div>
+
+            <button type="button" class="ml-finish-btn" id="btn-mini-lesson-finish">
+              <span>Đã hiểu • Quay lại bài tập chính</span>
+              <svg class="next-arrow-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+
         <!-- Modal Kết Thúc Trận Đấu & Xếp Hạng Band -->
         <div class="modal-overlay" id="modal-overlay">
           <div class="modal-card">

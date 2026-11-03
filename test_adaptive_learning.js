@@ -647,9 +647,54 @@ assert(activeRedoQ.isGrammarRedo === true, "Khi sang câu tiếp theo, người 
 assert(engine.adaptiveGrammarBanner.style.display === 'block' && engine.adaptiveGrammarBanner.innerHTML.includes('grammar-formula-flow') && engine.adaptiveGrammarBanner.innerHTML.includes('g-anim-word'), "Trên thẻ câu hỏi Làm Lại Ngữ Pháp hiển thị bảng công thức 3 bước và hiệu ứng chữ giải thích kỹ (.adaptive-grammar-banner)");
 assert(engine.questionMainText.innerHTML.includes('grammar-cue-word') && engine.questionMainText.innerHTML.includes('grammar-redo-slot'), "Câu văn hiển thị hiệu ứng gạch chân sáng ở các từ dấu hiệu ngữ pháp (.grammar-cue-word) và gợi ý từ loại ngay tại chỗ trống (.grammar-redo-slot)");
 
+// ====================================================================
+// TEST SUITE 13: ADAPTIVE MINI-LESSON 30 GIÂY KHI LÀM SAI NHIỀU Ở 1 CHỦ ĐỀ NGỮ PHÁP
+// ====================================================================
+console.log("\n🎓 TEST SUITE 13: Chế Độ Mini-Lesson 30 Giây Khi Sai Nhiều Ở 1 Chủ Đề Ngữ Pháp Cụ Thể");
+
+const wordClassList = toeicQuestions.filter(q => q.mode === 'word_class' && q.sentence && /_{2,}/.test(q.sentence)).slice(0, 3);
+engine.grammarTopicMistakes = {};
+engine.pendingMiniLessonTopic = null;
+engine.isMiniLessonActive = false;
+engine.hearts = 5;
+engine.questions = [...wordClassList];
+engine.currentIndex = 0;
+engine.loadQuestion(0);
+
+// Sai lần 1 ở chủ đề 'word_class' -> Chưa bật Mini-Lesson, mới ghi nhận 1 lỗi
+engine.handleAnswerSelect((engine.questions[0].correct + 1) % 4, null);
+assert(engine.grammarTopicMistakes['word_class'].sessionMistakes === 1 && engine.pendingMiniLessonTopic === null, "Sai lần 1 ở chủ đề Từ loại ('word_class'): Ghi nhận 1 lỗi theo chủ đề, chưa bật Mini-Lesson");
+
+// Sang câu kế tiếp và tiếp tục làm sai lần 2 ở cùng chủ đề 'word_class' -> Kích hoạt cờ pendingMiniLessonTopic = 'word_class'
+engine.nextQuestion();
+const currentBeforeLessonIdx = engine.currentIndex;
+engine.handleAnswerSelect((engine.questions[engine.currentIndex].correct + 1) % 4, null);
+assert(engine.pendingMiniLessonTopic === 'word_class', "Khi người dùng làm sai nhiều (>= 2 lần) ở cùng chủ đề ngữ pháp ('word_class'), hệ thống tự động đặt lịch chuyển sang Mini-Lesson 30 giây");
+assert(engine.feedbackGrammarCoach.innerHTML.includes('Mở Mini-Lesson 30s tiếp theo'), "Ngăn kéo phản hồi thông báo chuẩn bị mở Mini-Lesson 30s");
+
+// Bấm Tiếp tục (nextQuestion) -> Hệ thống tự động chuyển sang chế độ Mini-Lesson 30 giây trước khi vào bài tập tiếp theo
+engine.nextQuestion();
+assert(engine.isMiniLessonActive === true && engine.miniLessonOverlay.style.display === 'flex', "Tự động chuyển sang màn hình Mini-Lesson (#mini-lesson-overlay) khi bấm Tiếp tục");
+assert(engine.miniLessonSecondsEl.textContent === '30s' && engine.miniLessonDurationSeconds === 30, "Đồng hồ Mini-Lesson khởi chạy chuẩn xác ở mốc 30 giây (30s)");
+assert(engine.miniLessonFormulaEl.innerHTML.includes('grammar-formula-pill') && engine.miniLessonKeypointsEl.innerHTML.includes('ml-keypoint-item'), "Mini-Lesson hiển thị đầy đủ công thức cốt lõi 3 bước và các điểm trọng tâm ngắn gọn");
+
+// Tương tác làm thử câu Quick Check trong Mini-Lesson -> Nhận +50 XP
+const scoreBeforeQuickCheck = engine.score;
+const qcBtns = engine.miniLessonQcOptions.querySelectorAll('button');
+assert(qcBtns.length === 2, "Mini-Lesson có 2 nút Quick Check tương tác củng cố nhanh");
+qcBtns[0].click();
+assert(engine.score === scoreBeforeQuickCheck + 50, "Chọn đúng câu Quick Check trong Mini-Lesson được thưởng ngay +50 XP");
+
+// Kết thúc Mini-Lesson -> Tự động quay lại bài tập chính tiếp theo
+engine.finishGrammarMiniLesson();
+assert(engine.isMiniLessonActive === false && engine.miniLessonOverlay.style.display === 'none', "Đóng chế độ Mini-Lesson 30 giây gọn gàng");
+assert(engine.currentIndex === currentBeforeLessonIdx + 1, "Sau khi hoàn thành Mini-Lesson 30s, hệ thống tự động quay lại đúng bài tập chính tiếp theo");
+
 console.log("\n======================================================================");
 console.log(`🏁 KẾT QUẢ: ${passed}/${total} BÀI KIỂM ĐỊNH ADAPTIVE & TOEIC ĐẠT TUYỆT ĐỐI!`);
 console.log("======================================================================");
 clearInterval(engine.timerInterval);
+clearInterval(engine.miniLessonTimerInterval);
 process.exit(0);
+
 

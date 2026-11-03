@@ -96,6 +96,14 @@ class GameEngine {
     this.phoneticCoachCache = this.loadPhoneticCoachCache();
     this.lastMispronouncedWord = '';
     this.lastPhoneticCoachTip = '';
+    this.grammarTopicMistakes = this.loadGrammarTopicMistakes();
+    this.miniLessonMistakeThreshold = 2; // Sai nhiều (>= 2 lần) ở 1 chủ đề ngữ pháp cụ thể sẽ kích hoạt Mini-Lesson 30 giây
+    this.miniLessonDurationSeconds = 30.0;
+    this.miniLessonRemainingTime = 30.0;
+    this.miniLessonTimerInterval = null;
+    this.isMiniLessonActive = false;
+    this.pendingMiniLessonTopic = null;
+    this.activeMiniLessonData = null;
     this.currentGradeFilter = 'all'; // Mặc định luôn luôn là adaptive toàn diện theo yêu cầu người dùng
 
     this.initDOMElements();
@@ -318,7 +326,7 @@ class GameEngine {
   // Tiền xử lý & nạp trước (Preload) tài nguyên hình ảnh chuyển động GIF + siêu dữ liệu của câu hỏi vào RAM
   getOrPrecomputeQuestionMeta(q) {
     if (!q) return null;
-    const cacheKey = q.id || `${q.target_word}_${q.mode}`;
+    const cacheKey = `${q.id || q.target_word}_${q.mode || 'quiz'}_${q.isAudioQuiz ? 'aud' : ''}_${q.isDictation ? 'dict' : ''}`;
     if (this.preloadedQuestionCache && this.preloadedQuestionCache.has(cacheKey)) {
       return this.preloadedQuestionCache.get(cacheKey);
     }
@@ -1544,6 +1552,20 @@ class GameEngine {
     this.commonMistakeText = document.getElementById('common-mistake-text');
     this.btnNext = document.getElementById('btn-next');
 
+    // Mini-Lesson 30s Overlay (Tự động bật khi sai nhiều ở 1 chủ đề ngữ pháp)
+    this.miniLessonOverlay = document.getElementById('mini-lesson-overlay');
+    this.miniLessonTimerPill = document.getElementById('mini-lesson-timer-pill');
+    this.miniLessonSecondsEl = document.getElementById('mini-lesson-seconds');
+    this.miniLessonTimerBar = document.getElementById('mini-lesson-timer-bar');
+    this.miniLessonTitleEl = document.getElementById('mini-lesson-title');
+    this.miniLessonSubtitleEl = document.getElementById('mini-lesson-subtitle');
+    this.miniLessonFormulaEl = document.getElementById('mini-lesson-formula');
+    this.miniLessonKeypointsEl = document.getElementById('mini-lesson-keypoints');
+    this.miniLessonQuickCheckBox = document.getElementById('mini-lesson-quick-check');
+    this.miniLessonQcPrompt = document.getElementById('mini-lesson-qc-prompt');
+    this.miniLessonQcOptions = document.getElementById('mini-lesson-qc-options');
+    this.btnMiniLessonFinish = document.getElementById('btn-mini-lesson-finish');
+
     // Victory Modal
     this.modalOverlay = document.getElementById('modal-overlay');
     this.finalScoreEl = document.getElementById('final-score');
@@ -1697,6 +1719,12 @@ class GameEngine {
       this.btnQuestContinue.addEventListener('click', () => {
         this.triggerHaptic('light');
         this.closeDailyQuestModal();
+      });
+    }
+    if (this.btnMiniLessonFinish) {
+      this.btnMiniLessonFinish.addEventListener('click', () => {
+        this.triggerHaptic('light');
+        this.finishGrammarMiniLesson();
       });
     }
     if (this.dailyQuestModalOverlay) {
@@ -2599,11 +2627,13 @@ class GameEngine {
     const t2Pool = workingPool.filter(q => tier2Modes.includes(q.mode));
     const t3Pool = workingPool.filter(q => tier3Modes.includes(q.mode));
 
-    // Sắp xếp theo trọng số ưu tiên Adaptive (kết hợp jitter ngẫu nhiên 0 - 0.2 để tăng tính biến hóa)
+    // Sắp xếp theo trọng số ưu tiên Adaptive (ưu tiên câu có hình minh họa từ vựng + jitter ngẫu nhiên 0 - 0.2)
     const sortByPriority = (arr) => {
       return [...arr].sort((a, b) => {
-        const scoreA = this.calculatePriorityScore(a) + (Math.random() * 0.2);
-        const scoreB = this.calculatePriorityScore(b) + (Math.random() * 0.2);
+        const imgBoostA = this.resolveQuestionImageUrl(a) ? 0.35 : 0;
+        const imgBoostB = this.resolveQuestionImageUrl(b) ? 0.35 : 0;
+        const scoreA = this.calculatePriorityScore(a) + imgBoostA + (Math.random() * 0.2);
+        const scoreB = this.calculatePriorityScore(b) + imgBoostB + (Math.random() * 0.2);
         return scoreB - scoreA;
       });
     };
@@ -2832,7 +2862,7 @@ class GameEngine {
 
     // Hiển thị hình ảnh minh họa từ vựng với hiệu ứng zoom nhẹ & viền phát sáng tinh tế
     // (Ẩn ảnh ở lượt Làm Lại Ngữ Pháp để ưu tiên không gian cho hiệu ứng chữ giải thích ngữ pháp)
-    const imgUrl = qMeta ? qMeta.imgUrl : this.resolveQuestionImageUrl(q);
+    const imgUrl = (qMeta && qMeta.imgUrl) || this.resolveQuestionImageUrl(q);
     let hasVisibleVocabImage = false;
     if (this.vocabImageContainer && this.vocabImg) {
       if (imgUrl && !q.isGrammarRedo && !q.isAudioQuiz && q.mode !== 'dictation' && !q.isDictation) {
@@ -2849,6 +2879,7 @@ class GameEngine {
     if (this.questionCard && this.questionCard.classList) {
       if (hasVisibleVocabImage) {
         this.questionCard.classList.add('has-image');
+        this.questionCard.style.animation = '';
       } else {
         this.questionCard.classList.remove('has-image');
       }
@@ -4240,6 +4271,7 @@ class GameEngine {
           this.saveCustomExamBank();
         }
       }
+      this.recordGrammarTopicMistake(q);
       this.injectRecallVariant(q);
     }
 
@@ -4685,10 +4717,13 @@ class GameEngine {
             const arrow = i < arr.length - 1 ? `<span class="grammar-formula-arrow" style="--step-delay:${stepDelay}s">➔</span>` : '';
             return `<span class="grammar-formula-pill step-${i + 1}" style="--step-delay:${stepDelay}s">${t}</span>${arrow}`;
           }).join('');
+          const nextActionBadge = this.pendingMiniLessonTopic
+            ? `<span class="fgc-next-badge fgc-mini-lesson-trigger">🎓 Mở Mini-Lesson 30s tiếp theo</span>`
+            : `<span class="fgc-next-badge">🔁 Câu sau làm lại ngay</span>`;
           this.feedbackGrammarCoach.innerHTML = `
             <div class="fgc-top-row">
               <span class="fgc-title">📐 PHÂN TÍCH NGỮ PHÁP DỄ HIỂU</span>
-              <span class="fgc-next-badge">🔁 Câu sau làm lại ngay</span>
+              ${nextActionBadge}
             </div>
             <div class="grammar-formula-flow">${tokensHtml}</div>
             <div class="fgc-animated-lines">
@@ -4741,8 +4776,295 @@ class GameEngine {
     }
   }
 
+  // ====================================================================
+  // HỆ THỐNG ADAPTIVE MINI-LESSON 30 GIÂY THEO CHỦ ĐỀ NGỮ PHÁP
+  // ====================================================================
+  loadGrammarTopicMistakes() {
+    try {
+      const raw = localStorage.getItem('ielts_grammar_topic_mistakes');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  saveGrammarTopicMistakes() {
+    try {
+      localStorage.setItem('ielts_grammar_topic_mistakes', JSON.stringify(this.grammarTopicMistakes || {}));
+    } catch (e) {}
+  }
+
+  resolveGrammarTopicKey(q) {
+    if (!q || !this.isGrammarQuestion(q)) return null;
+    if (q.mode === 'word_class') return 'word_class';
+    if (q.mode === 'preposition') return 'preposition';
+    if (q.mode === 'collocation') return 'collocation';
+    if (q.mode === 'sentence_order') return 'sentence_order';
+    return 'sentence_cloze';
+  }
+
+  recordGrammarTopicMistake(q) {
+    const topicKey = this.resolveGrammarTopicKey(q);
+    if (!topicKey) return null;
+
+    if (!this.grammarTopicMistakes) {
+      this.grammarTopicMistakes = {};
+    }
+    if (!this.grammarTopicMistakes[topicKey]) {
+      this.grammarTopicMistakes[topicKey] = {
+        sessionMistakes: 0,
+        totalMistakes: 0,
+        lessonsCompleted: 0,
+        recentMissedWords: []
+      };
+    }
+
+    const tracker = this.grammarTopicMistakes[topicKey];
+    tracker.sessionMistakes = (tracker.sessionMistakes || 0) + 1;
+    tracker.totalMistakes = (tracker.totalMistakes || 0) + 1;
+
+    const options = Array.isArray(q.options) ? q.options : [];
+    const correctWord = (options[q.correct] !== undefined) ? String(options[q.correct]) : String(q.target_word || '');
+    if (correctWord && (!Array.isArray(tracker.recentMissedWords) || !tracker.recentMissedWords.includes(correctWord))) {
+      tracker.recentMissedWords = [correctWord, ...(tracker.recentMissedWords || [])].slice(0, 3);
+    }
+
+    // Khi người chơi làm sai nhiều (>= 2 lần) ở cùng 1 chủ đề ngữ pháp cụ thể -> Tự động kích hoạt chế độ Mini-Lesson 30 giây
+    if (tracker.sessionMistakes >= (this.miniLessonMistakeThreshold || 2)) {
+      this.pendingMiniLessonTopic = topicKey;
+      this.activeMiniLessonData = this.buildGrammarMiniLesson(topicKey, q);
+      tracker.sessionMistakes = 0;
+      tracker.lessonsCompleted = (tracker.lessonsCompleted || 0) + 1;
+    }
+
+    this.saveGrammarTopicMistakes();
+    return tracker;
+  }
+
+  buildGrammarMiniLesson(topicKey, latestWrongQ = null) {
+    const q = latestWrongQ || (this.questions && this.questions[this.currentIndex]) || {};
+    const coach = q.grammarCoachData || this.buildGrammarDeepExplanation(q, q.lastWrongSelectedIndex) || {};
+    const correctAns = coach.correctAns || q.target_word || 'sustainable';
+    const posLabel = coach.posLabel || 'Danh từ (n)';
+
+    const templates = {
+      word_class: {
+        topicKey: 'word_class',
+        title: '🏷️ Trọng Tâm: Phân Biệt Từ Loại (N / V / Adj / Adv)',
+        subtitle: 'Bạn vừa nhầm dạng bài Từ loại — nắm chắc 3 quy tắc vị trí & đuôi từ trong 30 giây nhé!',
+        formulaSteps: ['Mạo từ (a/an/the)', '+ Tính từ (Adj)', '+ DANH TỪ (N)'],
+        keypoints: [
+          `📌 Danh từ (n): Đứng sau "a/an/the", tính từ sở hữu (his/their) hoặc trước giới từ "of/in" (Đuôi: -tion, -ment, -ness, -ity).`,
+          `📌 Tính từ (adj): Đứng ngay trước Danh từ hoặc sau to-be / become / remain (Đuôi: -ive, -ous, -able, -ic, -al).`,
+          `📌 Trạng từ (adv): Có đuôi "-ly" bổ nghĩa cho Động từ thường • Ví dụ vừa gặp: "${correctAns}" là ${posLabel}.`
+        ],
+        qcPrompt: `⚡ Thử nhanh (+50 XP): Trong câu vừa gặp, từ "${correctAns}" đóng vai trò từ loại nào?`,
+        qcOptions: [posLabel, posLabel === 'Danh từ (n)' ? 'Trạng từ (adv)' : 'Danh từ (n)'],
+        qcCorrectIdx: 0
+      },
+      preposition: {
+        topicKey: 'preposition',
+        title: '🎯 Trọng Tâm: Giới Từ Đi Kèm Cấu Trúc Cố Định',
+        subtitle: 'Mỗi động từ / tính từ học thuật luôn đi đôi với 1 giới từ cố định — cùng điểm lại trong 30 giây!',
+        formulaSteps: ['Từ khóa chính', '+ GIỚI TỪ CỐ ĐỊNH', 'Cụm nghĩa chuẩn'],
+        keypoints: [
+          `📌 Đi với WITH: comply with (tuân thủ), deal with (xử lý), provide with (cung cấp).`,
+          `📌 Đi với TO / ON: contribute to, lead to, prior to • rely on, depend on, focus on.`,
+          `📌 Đi với IN / FOR: invest in, result in • eligible for, responsible for • Vừa gặp: "${(q.target_word || '').toLowerCase()} ${correctAns.toLowerCase()}".`
+        ],
+        qcPrompt: `⚡ Thử nhanh (+50 XP): Cụm từ "${(q.target_word || 'comply').toLowerCase()} + ___" (${q.vietnamese || 'tuân thủ'}) đi với giới từ nào?`,
+        qcOptions: [correctAns.toLowerCase(), correctAns.toLowerCase() === 'with' ? 'for' : 'with'],
+        qcCorrectIdx: 0
+      },
+      collocation: {
+        topicKey: 'collocation',
+        title: '🧩 Trọng Tâm: Cụm Từ Cố Định (Collocations)',
+        subtitle: 'Tiếng Anh học thuật ghép các từ theo cặp cố định tự nhiên — ghi nhớ mẹo nhận diện nhanh trong 30 giây!',
+        formulaSteps: ['Động từ / Tính từ mạnh', '+ Danh từ đi kèm', 'Cụm Collocation'],
+        keypoints: [
+          `📌 Không dịch từng từ rời rạc: Hãy nhìn danh từ/động từ ngay sát chỗ trống để chọn từ tạo thành cặp cố định.`,
+          `📌 Các cặp hay gặp: make a decision, conduct research, meet the deadline, impose regulations.`,
+          `📌 Cụm bạn vừa gặp: Điền "${correctAns}" để tạo cụm mang nghĩa "${q.vietnamese || 'chuẩn học thuật'}".`
+        ],
+        qcPrompt: `⚡ Thử nhanh (+50 XP): Từ nào ghép chuẩn xác trong câu vừa gặp để mang nghĩa "${q.vietnamese || 'chuẩn học thuật'}"?`,
+        qcOptions: [correctAns, coach.wrongAns || 'make'],
+        qcCorrectIdx: 0
+      },
+      sentence_order: {
+        topicKey: 'sentence_order',
+        title: '📐 Trọng Tâm: Cấu Trúc Trật Tự Câu (S ➔ V ➔ O)',
+        subtitle: 'Chỉ cần xác định đúng Chủ ngữ mở đầu và Động từ chính, bạn sẽ ghép đúng 100% câu trong 30 giây!',
+        formulaSteps: ['1. Chủ ngữ (S)', '➔ 2. Động từ (V)', '➔ 3. Tân ngữ / Bổ ngữ'],
+        keypoints: [
+          `📌 Bước 1 (Mở đầu): Chọn cụm Danh từ / Đại từ viết hoa đầu tiên làm Chủ ngữ (Ai / Cái gì).`,
+          `📌 Bước 2 (Giữa câu): Đặt Động từ chính hoặc "must / should / can / will + V" ngay sau Chủ ngữ.`,
+          `📌 Bước 3 (Cuối câu): Đặt Tân ngữ và cụm giới từ chỉ nơi chốn / thời gian ở cuối.`
+        ],
+        qcPrompt: `⚡ Thử nhanh (+50 XP): Trong câu chuẩn tiếng Anh, thành phần nào đứng ngay sau Chủ ngữ (S)?`,
+        qcOptions: ['Động từ / Vị ngữ (V)', 'Trạng ngữ chỉ thời gian'],
+        qcCorrectIdx: 0
+      },
+      sentence_cloze: {
+        topicKey: 'sentence_cloze',
+        title: '✍️ Trọng Tâm: Phân Tích Ngữ Cảnh & Dấu Hiệu Chỗ Trống',
+        subtitle: 'Cách khóa nhanh đáp án đúng trong 30 giây bằng cách nhìn từ đứng sát trước và sau chỗ trống!',
+        formulaSteps: ['1. Từ sát trước ____', '➔ 2. Khóa Từ loại', '➔ 3. Khớp nghĩa câu'],
+        keypoints: [
+          `📌 Bước 1: Nhìn từ đứng ngay trước chỗ trống (a/an/the, to, must/can, giới từ) để biết cần Danh từ hay Động từ.`,
+          `📌 Bước 2: Nhìn giới từ phía sau chỗ trống để loại ngay các phương án không đi kèm giới từ đó.`,
+          `📌 Áp dụng câu vừa gặp: Chọn "${correctAns}" (${posLabel}) mang nghĩa "${q.vietnamese || ''}".`
+        ],
+        qcPrompt: `⚡ Thử nhanh (+50 XP): Đáp án chuẩn xác phù hợp cả ngữ pháp và ngữ cảnh câu vừa gặp là từ nào?`,
+        qcOptions: [correctAns, coach.wrongAns || 'alternative'],
+        qcCorrectIdx: 0
+      }
+    };
+
+    return templates[topicKey] || templates.word_class;
+  }
+
+  startGrammarMiniLesson(topicKey = null) {
+    const resolvedTopic = topicKey || this.pendingMiniLessonTopic || 'word_class';
+    const currentQ = this.questions && this.questions[this.currentIndex];
+    const lessonData = this.activeMiniLessonData || this.buildGrammarMiniLesson(resolvedTopic, currentQ);
+    this.activeMiniLessonData = lessonData;
+    this.isMiniLessonActive = true;
+    this.pendingMiniLessonTopic = null;
+    this.miniLessonRemainingTime = this.miniLessonDurationSeconds || 30.0;
+
+    // Tạm dừng đồng hồ câu hỏi chính trong lúc học Mini-Lesson 30s
+    clearInterval(this.timerInterval);
+    clearInterval(this.miniLessonTimerInterval);
+
+    if (this.feedbackDrawer && this.feedbackDrawer.classList) {
+      this.feedbackDrawer.classList.remove('active');
+    }
+
+    if (this.miniLessonTitleEl) {
+      this.miniLessonTitleEl.textContent = lessonData.title;
+    }
+    if (this.miniLessonSubtitleEl) {
+      this.miniLessonSubtitleEl.textContent = lessonData.subtitle;
+    }
+    if (this.miniLessonSecondsEl) {
+      this.miniLessonSecondsEl.textContent = `${Math.ceil(this.miniLessonRemainingTime)}s`;
+    }
+    if (this.miniLessonTimerBar) {
+      this.miniLessonTimerBar.style.width = '100%';
+    }
+
+    if (this.miniLessonFormulaEl) {
+      const stepsHtml = (lessonData.formulaSteps || []).map((step, idx, arr) => {
+        const delay = (0.05 + idx * 0.12).toFixed(2);
+        const arrow = idx < arr.length - 1 ? `<span class="grammar-formula-arrow" style="--step-delay:${delay}s">➔</span>` : '';
+        return `<span class="grammar-formula-pill step-${idx + 1}" style="--step-delay:${delay}s">${step}</span>${arrow}`;
+      }).join('');
+      this.miniLessonFormulaEl.innerHTML = `<div class="grammar-formula-flow">${stepsHtml}</div>`;
+    }
+
+    if (this.miniLessonKeypointsEl) {
+      this.miniLessonKeypointsEl.innerHTML = (lessonData.keypoints || []).map((pt, idx) => (
+        `<div class="ml-keypoint-item" style="--kp-delay:${(0.1 + idx * 0.12).toFixed(2)}s">${this.renderAnimatedGrammarWords(pt, 0.06 + idx * 0.1)}</div>`
+      )).join('');
+    }
+
+    if (this.miniLessonQcPrompt) {
+      this.miniLessonQcPrompt.textContent = lessonData.qcPrompt || '⚡ Chạm chọn nhanh quy tắc đúng (+50 XP):';
+    }
+
+    if (this.miniLessonQcOptions) {
+      this.miniLessonQcOptions.innerHTML = '';
+      (lessonData.qcOptions || []).forEach((optText, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ml-qc-option-btn';
+        btn.textContent = optText;
+        btn.addEventListener('click', () => {
+          if (btn.disabled) return;
+          const isRight = idx === (lessonData.qcCorrectIdx || 0);
+          if (isRight) {
+            btn.classList.add('qc-correct');
+            btn.textContent = `✓ ${optText} (+50 XP)`;
+            this.score += 50;
+            this.updateScoreUI();
+            this.triggerHaptic('success');
+            if (typeof soundEngine !== 'undefined' && soundEngine.playCorrect) {
+              soundEngine.playCorrect(2);
+            }
+            const allBtns = this.miniLessonQcOptions.querySelectorAll ? this.miniLessonQcOptions.querySelectorAll('button') : [];
+            if (allBtns && allBtns.forEach) allBtns.forEach(b => { b.disabled = true; });
+          } else {
+            btn.classList.add('qc-wrong');
+            this.triggerHaptic('error');
+            if (typeof soundEngine !== 'undefined' && soundEngine.playWrong) {
+              soundEngine.playWrong();
+            }
+          }
+        });
+        this.miniLessonQcOptions.appendChild(btn);
+      });
+    }
+
+    if (this.miniLessonOverlay) {
+      this.miniLessonOverlay.style.display = 'flex';
+      if (this.miniLessonOverlay.classList) {
+        this.miniLessonOverlay.classList.add('active');
+      }
+    }
+
+    this.flashDynamicIsland('🎓 MINI-LESSON 30 GIÂY: NẮM CHẮC TRỌNG TÂM!');
+
+    // Bộ đếm ngược 30 giây của Mini-Lesson
+    this.miniLessonTimerInterval = setInterval(() => {
+      this.miniLessonRemainingTime = Math.max(0, this.miniLessonRemainingTime - 0.2);
+      if (this.miniLessonSecondsEl) {
+        this.miniLessonSecondsEl.textContent = `${Math.ceil(this.miniLessonRemainingTime)}s`;
+      }
+      if (this.miniLessonTimerBar) {
+        const pct = Math.max(0, (this.miniLessonRemainingTime / (this.miniLessonDurationSeconds || 30)) * 100);
+        this.miniLessonTimerBar.style.width = `${pct}%`;
+      }
+      if (this.miniLessonRemainingTime <= 0) {
+        this.finishGrammarMiniLesson();
+      }
+    }, 200);
+
+    return lessonData;
+  }
+
+  finishGrammarMiniLesson() {
+    clearInterval(this.miniLessonTimerInterval);
+    this.miniLessonTimerInterval = null;
+    if (!this.isMiniLessonActive) return;
+
+    this.isMiniLessonActive = false;
+    this.pendingMiniLessonTopic = null;
+
+    if (this.miniLessonOverlay) {
+      this.miniLessonOverlay.style.display = 'none';
+      if (this.miniLessonOverlay.classList) {
+        this.miniLessonOverlay.classList.remove('active');
+      }
+    }
+
+    // Sau khi hoàn thành Mini-Lesson 30 giây, quay trở lại bài tập chính tiếp theo
+    this.currentIndex++;
+    if (this.currentIndex >= this.questions.length || this.hearts <= 0) {
+      this.finishRound();
+    } else {
+      this.loadQuestion(this.currentIndex);
+    }
+  }
+
   nextQuestion() {
     clearTimeout(this.autoAdvanceTimer);
+
+    // Nếu người chơi vừa làm sai nhiều ở 1 chủ đề ngữ pháp cụ thể -> Chuyển sang chế độ Mini-Lesson 30 giây trước khi quay lại bài tập chính
+    if (this.pendingMiniLessonTopic && this.hearts > 0) {
+      this.startGrammarMiniLesson(this.pendingMiniLessonTopic);
+      return;
+    }
+
     this.currentIndex++;
     if (this.currentIndex >= this.questions.length || this.hearts <= 0) {
       this.finishRound();
