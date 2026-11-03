@@ -272,15 +272,50 @@ class GameEngine {
   }
 
   resolveQuestionImageUrl(q) {
-    if (!q || q.isAudioQuiz) return null;
+    if (!q || q.isAudioQuiz || q.isDictation || q.mode === 'dictation') return null;
     if (q.image_url) return q.image_url;
-    if (typeof VOCAB_IMAGES === 'undefined') return null;
-    const targetKey = (q.target_word || '').trim().toLowerCase();
-    const baseKey = targetKey.replace(/\s+(to|for|with|on|in|of|from|at|by|into|about|upon)$/i, '');
-    return VOCAB_IMAGES[targetKey] || VOCAB_IMAGES[baseKey] || null;
+    if (typeof VOCAB_IMAGES !== 'undefined') {
+      const targetKey = (q.target_word || '').trim().toLowerCase();
+      const baseKey = targetKey.replace(/\s+(to|for|with|on|in|of|from|at|by|into|about|upon)$/i, '');
+      const matched = VOCAB_IMAGES[targetKey] || VOCAB_IMAGES[baseKey];
+      if (matched) return matched;
+    }
+    return null;
   }
 
-  // Tiền xử lý & nạp trước (Preload) tài nguyên hình ảnh + siêu dữ liệu của câu hỏi vào RAM
+  resolveQuestionGifConfig(q, posTag = '') {
+    if (!q || q.isAudioQuiz || q.isDictation || q.mode === 'dictation') return null;
+    const resolvedPos = posTag || this.getWordPOS(q.target_word || '', q);
+    if (typeof buildAnimatedVocabGifConfig === 'function') {
+      return buildAnimatedVocabGifConfig(q, resolvedPos);
+    }
+    const targetKey = String(q.target_word || '').trim().toLowerCase();
+    const baseKey = targetKey.replace(/\s+(to|for|with|on|in|of|from|at|by|into|about|upon)$/i, '');
+    const illustrationUrl = q.image_url || (typeof VOCAB_IMAGES !== 'undefined' ? (VOCAB_IMAGES[targetKey] || VOCAB_IMAGES[baseKey]) : null);
+    const fallbackSvg = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 150"><rect width="360" height="150" rx="16" fill="#1e293b"/><circle cx="180" cy="75" r="34" fill="#38bdf8" fill-opacity="0.25"><animate attributeName="r" values="30;42;30" dur="2s" repeatCount="indefinite"/></circle><text x="180" y="84" text-anchor="middle" font-size="30">🎓</text></svg>`)}`;
+    return {
+      isAnimatedGif: true,
+      format: 'gif-2d-motion',
+      visualType: illustrationUrl ? 'illustrated_gif' : 'procedural_gif_scene',
+      illustrationUrl: illustrationUrl || null,
+      animatedSceneDataUri: fallbackSvg,
+      primarySrc: illustrationUrl || fallbackSvg,
+      fallbackSrc: fallbackSvg,
+      motionPreset: 'breeze_float',
+      themeKey: 'education',
+      primaryColor: '#38bdf8',
+      secondaryColor: '#6366f1',
+      accentColor: '#fbbf24',
+      particles: ['✨', '🎓', '💡', '⭐'],
+      centerGlyph: '🎓',
+      orbitGlyphA: '📚',
+      orbitGlyphB: '💡',
+      sceneLabel: 'STUDY FLOW',
+      reactionState: 'idle_loop'
+    };
+  }
+
+  // Tiền xử lý & nạp trước (Preload) tài nguyên hình ảnh chuyển động GIF + siêu dữ liệu của câu hỏi vào RAM
   getOrPrecomputeQuestionMeta(q) {
     if (!q) return null;
     const cacheKey = q.id || `${q.target_word}_${q.mode}`;
@@ -288,7 +323,13 @@ class GameEngine {
       return this.preloadedQuestionCache.get(cacheKey);
     }
 
+    const ansWord = (q.mode === 'word_class' && q.options && q.options[q.correct])
+      ? q.options[q.correct]
+      : (q.target_word || (q.options && q.options[q.correct]) || '');
+    const mainPos = this.getWordPOS(ansWord, q);
+    const gifConfig = this.resolveQuestionGifConfig(q, mainPos);
     const imgUrl = this.resolveQuestionImageUrl(q);
+
     if (imgUrl && this.preloadedImageCache && !this.preloadedImageCache.has(imgUrl)) {
       try {
         if (typeof Image !== 'undefined') {
@@ -303,10 +344,6 @@ class GameEngine {
       } catch (e) {}
     }
 
-    const ansWord = (q.mode === 'word_class' && q.options && q.options[q.correct])
-      ? q.options[q.correct]
-      : (q.target_word || (q.options && q.options[q.correct]) || '');
-    const mainPos = this.getWordPOS(ansWord, q);
     const optionPosList = Array.isArray(q.options)
       ? q.options.map(opt => this.getWordPOS(opt, q))
       : [];
@@ -316,6 +353,7 @@ class GameEngine {
 
     const meta = {
       imgUrl,
+      gifConfig,
       hasImage: Boolean(imgUrl),
       mainPos,
       optionPosList,
@@ -557,20 +595,60 @@ class GameEngine {
     this.audioGradeFilter = String(gradeKey || 'all').trim();
     this.saveAudioGradeFilter();
     this.usedQuestionIds.clear();
+    this.closeAudioGradeDropdown();
     this.updateAudioGradeFilterUI();
     this.updateGradeFilterUI();
-    if (this.currentGradeFilter === 'audio') {
+    if (this.currentGradeFilter === 'audio' || this.currentGradeFilter === 'dictation') {
       this.startNewRound();
     }
   }
 
+  toggleAudioGradeDropdown() {
+    if (!this.audioGradeFilterBar || !this.audioGradeFilterBar.classList) return;
+    const isOpen = this.audioGradeFilterBar.classList.toggle('open');
+    if (this.btnAudioGradePicker && this.btnAudioGradePicker.classList) {
+      this.btnAudioGradePicker.classList.toggle('open', isOpen);
+      if (typeof this.btnAudioGradePicker.setAttribute === 'function') {
+        this.btnAudioGradePicker.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      }
+    }
+  }
+
+  closeAudioGradeDropdown() {
+    if (this.audioGradeFilterBar && this.audioGradeFilterBar.classList) {
+      this.audioGradeFilterBar.classList.remove('open');
+    }
+    if (this.btnAudioGradePicker && this.btnAudioGradePicker.classList) {
+      this.btnAudioGradePicker.classList.remove('open');
+      if (typeof this.btnAudioGradePicker.setAttribute === 'function') {
+        this.btnAudioGradePicker.setAttribute('aria-expanded', 'false');
+      }
+    }
+  }
+
   updateAudioGradeFilterUI() {
+    const labelMap = {
+      all: 'Tất cả',
+      g6: 'Lớp 6',
+      g7: 'Lớp 7',
+      g8: 'Lớp 8',
+      g9: 'Lớp 9',
+      g10: 'Lớp 10',
+      g11: 'Lớp 11',
+      g12: 'Lớp 12',
+      toeic: 'TOEIC',
+      band7: 'IELTS 7+'
+    };
+    const activeKey = this.audioGradeFilter || 'all';
+    if (this.audioGradeCurrentLabel) {
+      this.audioGradeCurrentLabel.textContent = labelMap[activeKey] || 'Tất cả';
+    }
     if (this.audioGradeFilterBar && this.audioGradeFilterBar.querySelectorAll) {
       const chips = this.audioGradeFilterBar.querySelectorAll('.audio-grade-chip');
       chips.forEach(chip => {
         if (chip && chip.classList && typeof chip.getAttribute === 'function') {
           const val = chip.getAttribute('data-audio-grade') || 'all';
-          chip.classList.toggle('active', val === (this.audioGradeFilter || 'all'));
+          chip.classList.toggle('active', val === activeKey);
         }
       });
     }
@@ -853,12 +931,12 @@ class GameEngine {
         id: 'quest_minigame_3',
         icon: '🧩',
         title: 'Chinh phục Kho Trò Chơi',
-        desc: 'Hoàn thành 3 câu Xếp câu, Nghe hoặc Phát âm',
+        desc: 'Hoàn thành 3 câu Xếp câu, Luyện nghe hoặc Chép chính tả',
         target: 3,
         progress: 0,
         rewardXP: 200,
         claimed: false,
-        actionFilter: 'voice_check'
+        actionFilter: 'dictation'
       },
       {
         id: 'quest_combo_3',
@@ -962,8 +1040,8 @@ class GameEngine {
 
     const currentQ = this.questions && this.questions[this.currentIndex];
     const isMiniGame = Boolean(
-      (currentQ && (currentQ.mode === 'sentence_order' || currentQ.mode === 'voice_check' || currentQ.isAudioQuiz || currentQ.isVoiceCheck)) ||
-      ['sentence_order', 'audio', 'voice_check'].includes(this.currentGradeFilter)
+      (currentQ && (currentQ.mode === 'sentence_order' || currentQ.mode === 'dictation' || currentQ.isAudioQuiz || currentQ.isDictation)) ||
+      ['sentence_order', 'audio', 'dictation'].includes(this.currentGradeFilter)
     );
 
     if (!Array.isArray(this.dailyTracker.quests) || this.dailyTracker.quests.length === 0) {
@@ -1423,15 +1501,25 @@ class GameEngine {
     this.modeBadge = document.getElementById('mode-badge');
     this.topicBadge = document.getElementById('topic-badge');
     this.promptText = document.getElementById('prompt-text');
+    this.adaptiveGrammarBanner = document.getElementById('adaptive-grammar-banner');
     this.questionMainText = document.getElementById('question-main-text');
     this.letterBoxContainer = document.getElementById('letter-box-container');
     this.vocabImageContainer = document.getElementById('vocab-image');
     this.vocabImg = document.getElementById('vocab-img');
+    this.gifAmbientBackdrop = document.getElementById('gif-ambient-backdrop');
+    this.gifSubjectStage = document.getElementById('gif-subject-stage');
+    this.gifParticlesLayer = document.getElementById('gif-particles-layer');
+    this.btnGifTapSpeak = document.getElementById('btn-gif-tap-speak');
+    this.gifPillWave = document.getElementById('gif-pill-wave');
+    this.gifReactionBanner = document.getElementById('gif-reaction-banner');
     this.phoneticGuide = document.getElementById('phonetic-guide');
     this.academicHintPill = document.getElementById('academic-hint-pill');
 
-    // Audio Quiz Panel & Phân loại theo lớp cho Luyện Nghe
+    // Audio Quiz Panel & Phân loại theo lớp cho Luyện Nghe / Chép Chính Tả
     this.audioQuizPanel = document.getElementById('audio-quiz-panel');
+    this.audioGradeDropdownWrap = document.getElementById('audio-grade-dropdown-wrap');
+    this.btnAudioGradePicker = document.getElementById('btn-audio-grade-picker');
+    this.audioGradeCurrentLabel = document.getElementById('audio-grade-current-label');
     this.audioGradeFilterBar = document.getElementById('audio-grade-filter-bar');
     this.audioWaveBars = document.getElementById('audio-wave-bars');
     this.btnAudioQuizPlay = document.getElementById('btn-audio-quiz-play');
@@ -1448,6 +1536,7 @@ class GameEngine {
     this.feedbackTitle = document.getElementById('feedback-title');
     this.feedbackVietnamese = document.getElementById('feedback-vietnamese');
     this.feedbackExplanation = document.getElementById('feedback-explanation');
+    this.feedbackGrammarCoach = document.getElementById('feedback-grammar-coach');
     this.feedbackConfusableBox = document.getElementById('feedback-confusable-box');
     this.btnAutoNextToggle = document.getElementById('btn-auto-next-toggle');
     this.examTaskLabel = document.getElementById('exam-task-label');
@@ -1553,14 +1642,14 @@ class GameEngine {
     this.customExamCountBadge = document.getElementById('custom-exam-count-badge');
     this.iosHapticTrigger = document.getElementById('ios-haptic-trigger');
 
-    // Mini Games Menu (Gom Sắp xếp câu, Luyện nghe, Luyện phát âm & các game mới sau này)
+    // Mini Games Menu (Gom Sắp xếp câu, Luyện nghe, Chép chính tả & các game mới sau này)
     this.miniGamesMenuWrapper = document.getElementById('mini-games-menu-wrapper');
     this.btnMiniGamesToggle = document.getElementById('btn-mini-games-toggle');
     this.miniGamesDropdownMenu = document.getElementById('mini-games-dropdown-menu');
-    this.btnVoiceCheckMode = document.getElementById('btn-voice-check-mode');
+    this.btnDictationMode = document.getElementById('btn-dictation-mode');
     this.badgeGameSentenceOrder = document.getElementById('badge-game-sentence-order');
     this.badgeGameAudioQuiz = document.getElementById('badge-game-audio-quiz');
-    this.badgeGameVoiceCheck = document.getElementById('badge-game-voice-check');
+    this.badgeGameDictation = document.getElementById('badge-game-dictation');
 
     // Daily Quests & Streak Header + Modal
     this.btnDailyStreakHeader = document.getElementById('btn-daily-streak-header');
@@ -1643,6 +1732,11 @@ class GameEngine {
             this.closeMiniGamesMenu();
           }
         }
+        if (this.audioGradeDropdownWrap && this.audioGradeFilterBar && this.audioGradeFilterBar.classList && this.audioGradeFilterBar.classList.contains('open')) {
+          if (typeof this.audioGradeDropdownWrap.contains === 'function' && !this.audioGradeDropdownWrap.contains(e.target)) {
+            this.closeAudioGradeDropdown();
+          }
+        }
       });
     }
     this.btnThemeToggle.addEventListener('click', (e) => {
@@ -1680,12 +1774,12 @@ class GameEngine {
         this.toggleAudioQuizMode();
       });
     }
-    if (this.btnVoiceCheckMode) {
-      this.btnVoiceCheckMode.addEventListener('click', (e) => {
+    if (this.btnDictationMode) {
+      this.btnDictationMode.addEventListener('click', (e) => {
         if (e && e.stopPropagation) e.stopPropagation();
         this.triggerHaptic('light');
         this.closeMiniGamesMenu();
-        this.toggleVoiceCheckMode();
+        this.toggleDictationMode();
       });
     }
     if (this.btnMasteryStats) {
@@ -1767,6 +1861,14 @@ class GameEngine {
       });
     }
 
+    if (this.btnAudioGradePicker) {
+      this.btnAudioGradePicker.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.triggerHaptic('light');
+        this.toggleAudioGradeDropdown();
+      });
+    }
+
     if (this.audioGradeFilterBar && this.audioGradeFilterBar.querySelectorAll) {
       const audioChips = this.audioGradeFilterBar.querySelectorAll('.audio-grade-chip');
       audioChips.forEach(chip => {
@@ -1783,7 +1885,7 @@ class GameEngine {
       this.btnAudioQuizPlay.addEventListener('click', () => {
         const q = this.questions[this.currentIndex];
         if (!q) return;
-        const word = q.audioTargetWord || q.target_word || q.options[q.correct];
+        const word = q.dictationTargetWord || q.audioTargetWord || q.target_word || (q.options && q.options[q.correct]);
         this.triggerAudioWaveAnimation(950);
         if (typeof speechEngine !== 'undefined') speechEngine.speakWord(word, 0.92);
       });
@@ -1792,9 +1894,21 @@ class GameEngine {
       this.btnAudioQuizSlow.addEventListener('click', () => {
         const q = this.questions[this.currentIndex];
         if (!q) return;
-        const word = q.audioTargetWord || q.target_word || q.options[q.correct];
+        const word = q.dictationTargetWord || q.audioTargetWord || q.target_word || (q.options && q.options[q.correct]);
         this.triggerAudioWaveAnimation(1350);
         if (typeof speechEngine !== 'undefined') speechEngine.speakSlow(word);
+      });
+    }
+
+    if (this.vocabImageContainer) {
+      this.vocabImageContainer.addEventListener('click', (e) => {
+        this.triggerGifTapSpeak(e);
+      });
+    }
+    if (this.btnGifTapSpeak) {
+      this.btnGifTapSpeak.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        this.triggerGifTapSpeak(e);
       });
     }
 
@@ -1949,6 +2063,32 @@ class GameEngine {
             if (tiles[numIdx] && !tiles[numIdx].disabled && (!tiles[numIdx].classList || !tiles[numIdx].classList.contains('used'))) {
               if (tiles[numIdx].click) tiles[numIdx].click();
             }
+          }
+          return;
+        }
+
+        if (q.mode === 'dictation' || q.isDictation) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const subBtn = document.getElementById('btn-dictation-submit');
+            if (subBtn && subBtn.click) subBtn.click();
+            return;
+          }
+          if (e.key === 'Backspace') {
+            const backBtn = document.getElementById('btn-dictation-backspace');
+            if (backBtn && backBtn.click) backBtn.click();
+            return;
+          }
+          if (e.key === 'Escape') {
+            const clrBtn = document.getElementById('btn-dictation-clear');
+            if (clrBtn && clrBtn.click) clrBtn.click();
+            return;
+          }
+          const upper = String(e.key || '').toUpperCase();
+          if (/^[A-Z-]$/.test(upper) && this.answersContainer && this.answersContainer.querySelectorAll) {
+            const chips = Array.from(this.answersContainer.querySelectorAll('.dictation-letter-chip'));
+            const matchChip = chips.find(t => !t.disabled && (!t.classList || !t.classList.contains('used')) && t.textContent.trim().toUpperCase() === upper);
+            if (matchChip && matchChip.click) matchChip.click();
           }
           return;
         }
@@ -2140,8 +2280,8 @@ class GameEngine {
     if (!this.currentGradeFilter || this.currentGradeFilter === 'all') {
       return [...IELTS_VOCAB_BANK];
     }
-    // Phần Luyện Nghe có phân loại theo Lớp (Lớp 6 -> Lớp 12, TOEIC, IELTS 7+)
-    if (this.currentGradeFilter === 'audio') {
+    // Phần Luyện Nghe & Nghe Chép Chính Tả có phân loại theo Lớp (Lớp 6 -> Lớp 12, TOEIC, IELTS 7+)
+    if (this.currentGradeFilter === 'audio' || this.currentGradeFilter === 'dictation') {
       const subFilter = this.audioGradeFilter || 'all';
       if (subFilter === 'all') {
         return [...IELTS_VOCAB_BANK];
@@ -2366,38 +2506,43 @@ class GameEngine {
     };
   }
 
-  buildVoiceCheckVariant(baseQ, idx) {
+  buildDictationVariant(baseQ, idx) {
     const correctOpt = (baseQ.options && baseQ.options[baseQ.correct]) || baseQ.target_word || '';
-    const targetWord = String(baseQ.target_word || correctOpt || 'vocabulary').trim();
-    const cleanTarget = targetWord.replace(/^to\s+/i, '').trim();
+    const rawTarget = String(baseQ.target_word || correctOpt || 'vocabulary').trim();
+    const cleanTarget = rawTarget.replace(/^to\s+/i, '').split(/\s+/)[0].replace(/[^a-zA-Z-]/g, '').toLowerCase() || 'sustainable';
     const pos = this.getWordPOS(cleanTarget, baseQ);
 
-    let voicePhrase = '';
-    if (pos === '(v)' || pos === '(v.phr)') {
-      voicePhrase = `We should ${cleanTarget.toLowerCase()} every day`;
+    let dictationMaskedSentence = '';
+    if (baseQ.sentence && /_{2,}/.test(baseQ.sentence) && baseQ.sentence.length <= 78) {
+      dictationMaskedSentence = String(baseQ.sentence).trim();
+    } else if (pos === '(v)' || pos === '(v.phr)') {
+      dictationMaskedSentence = 'We should ____ this important task every day.';
     } else if (pos === '(adj)') {
-      voicePhrase = `This is a ${cleanTarget.toLowerCase()} solution`;
+      dictationMaskedSentence = 'This is a ____ solution for our team.';
     } else if (pos === '(adv)') {
-      voicePhrase = `They work ${cleanTarget.toLowerCase()} together`;
+      dictationMaskedSentence = 'Our team works ____ together on projects.';
     } else {
-      voicePhrase = `We need ${cleanTarget.toLowerCase()} for success`;
+      dictationMaskedSentence = 'Our team needs ____ for long-term success.';
     }
 
-    const voiceTokens = voicePhrase.split(/\s+/).filter(Boolean);
-    const coachMeta = this.analyzeWordSyllablesAndTip(cleanTarget, baseQ.phonetic || '');
+    const dictationSentence = dictationMaskedSentence.replace(/_{2,}/g, cleanTarget);
+    const upperChars = cleanTarget.toUpperCase().split('');
+    let scrambled = shuffleArray([...upperChars]);
+    if (upperChars.length > 1 && scrambled.join('') === upperChars.join('')) {
+      scrambled = [...upperChars.slice(1), upperChars[0]];
+    }
 
     return {
       ...baseQ,
-      isVoiceCheck: true,
-      mode: 'voice_check',
-      voiceTargetWord: cleanTarget,
-      voicePhrase,
-      voiceTokens,
-      voiceSyllables: coachMeta.syllables,
-      voiceStressIndex: coachMeta.stressIndex,
-      voiceFormattedSyllables: coachMeta.formattedSyllables,
-      voiceCoachTip: coachMeta.oneLineCoachTip,
-      prompt: '🎙️ Phát âm chuẩn từ vựng hoặc cụm từ ngắn dưới đây:'
+      isDictation: true,
+      mode: 'dictation',
+      dictationTargetWord: cleanTarget,
+      dictationTarget: cleanTarget,
+      dictationSentence,
+      dictationMaskedSentence,
+      dictationScrambledLetters: scrambled,
+      dictationLetters: scrambled,
+      prompt: '✍️ Nghe phát âm và chép lại đúng chính tả từ vựng:'
     };
   }
 
@@ -2519,9 +2664,9 @@ class GameEngine {
       return selected.map((q, idx) => this.buildSentenceOrderVariant(q, idx));
     }
 
-    // Nếu người học đang chọn Game Luyện Phát Âm Chấm Điểm Giọng Nói (Voice Check)
-    if (this.currentGradeFilter === 'voice_check') {
-      return selected.map((q, idx) => this.buildVoiceCheckVariant(q, idx));
+    // Nếu người học đang chọn Game Nghe Chép Chính Tả (Listening Dictation)
+    if (this.currentGradeFilter === 'dictation') {
+      return selected.map((q, idx) => this.buildDictationVariant(q, idx));
     }
 
     return selected;
@@ -2556,7 +2701,7 @@ class GameEngine {
 
     this.activeRoundTimeLimit = this.currentGradeFilter === 'part5_speed'
       ? 12.0
-      : ((this.currentGradeFilter === 'sentence_order' || this.currentGradeFilter === 'voice_check') ? 30.0 : this.maxTimeSeconds);
+      : ((this.currentGradeFilter === 'sentence_order' || this.currentGradeFilter === 'dictation') ? 30.0 : this.maxTimeSeconds);
 
     const pool = this.getFilteredBank();
     this.questions = this.generateAdaptiveQueue(pool);
@@ -2653,17 +2798,21 @@ class GameEngine {
       preposition: '🎯 Chọn giới từ',
       sentence_cloze: '✍️ Điền vào câu',
       sentence_order: '🧩 Sắp xếp câu',
-      voice_check: '🎙️ Luyện phát âm'
+      dictation: '✍️ Chép chính tả'
     };
     
     if (q.isAudioQuiz) {
       this.modeBadge.innerHTML = `🎧 Luyện Nghe AI`;
       this.modeBadge.style.background = `rgba(56, 189, 248, 0.22)`;
       this.modeBadge.style.color = `#38bdf8`;
-    } else if (q.mode === 'voice_check' || q.isVoiceCheck) {
-      this.modeBadge.innerHTML = `🎙️ Luyện Phát Âm`;
+    } else if (q.mode === 'dictation' || q.isDictation) {
+      this.modeBadge.innerHTML = `✍️ Chép Chính Tả`;
       this.modeBadge.style.background = `rgba(16, 185, 129, 0.22)`;
       this.modeBadge.style.color = `#34d399`;
+    } else if (q.isGrammarRedo) {
+      this.modeBadge.innerHTML = `🔁 Làm Lại Ngữ Pháp`;
+      this.modeBadge.style.background = `rgba(245, 158, 11, 0.24)`;
+      this.modeBadge.style.color = `#fbbf24`;
     } else if (q.isRecallVariant) {
       this.modeBadge.innerHTML = `🔁 Active Recall`;
       this.modeBadge.style.background = `rgba(236, 72, 153, 0.25)`;
@@ -2678,20 +2827,22 @@ class GameEngine {
       this.modeBadge.style.color = `var(--text-secondary)`;
     }
 
-    // Hiển thị hình ảnh minh họa chì (đã được Preload & Decode sẵn từ bộ nhớ đệm)
+    // Hiển thị bảng giải thích ngữ pháp bằng hiệu ứng chữ đơn giản dễ hiểu nếu là câu Làm Lại Ngữ Pháp
+    this.renderAdaptiveGrammarBanner(q);
+
+    // Hiển thị hình ảnh minh họa từ vựng với hiệu ứng zoom nhẹ & viền phát sáng tinh tế
+    // (Ẩn ảnh ở lượt Làm Lại Ngữ Pháp để ưu tiên không gian cho hiệu ứng chữ giải thích ngữ pháp)
+    const imgUrl = qMeta ? qMeta.imgUrl : this.resolveQuestionImageUrl(q);
     let hasVisibleVocabImage = false;
     if (this.vocabImageContainer && this.vocabImg) {
-      const imgUrl = (qMeta && qMeta.imgUrl) || this.resolveQuestionImageUrl(q);
-      if (imgUrl && q.mode !== 'voice_check') {
-        if (this.vocabImg.src !== imgUrl) {
-          this.vocabImg.src = imgUrl;
-        }
-        this.vocabImg.alt = q.target_word || 'Minh họa từ vựng';
-        this.vocabImageContainer.style.display = 'flex';
+      if (imgUrl && !q.isGrammarRedo && !q.isAudioQuiz && q.mode !== 'dictation' && !q.isDictation) {
+        const gifConfig = (qMeta && qMeta.gifConfig) || this.resolveQuestionGifConfig(q, qMeta && qMeta.mainPos);
+        this.renderQuestionGifStage(q, gifConfig, imgUrl);
         hasVisibleVocabImage = true;
       } else {
         this.vocabImageContainer.style.display = 'none';
         this.vocabImg.src = '';
+        this.activeGifConfig = null;
       }
     }
 
@@ -2700,6 +2851,11 @@ class GameEngine {
         this.questionCard.classList.add('has-image');
       } else {
         this.questionCard.classList.remove('has-image');
+      }
+      if (q.isGrammarRedo) {
+        this.questionCard.classList.add('is-grammar-redo');
+      } else {
+        this.questionCard.classList.remove('is-grammar-redo');
       }
       if (!q.isAudioQuiz && q.mode === 'letter_fill') {
         this.questionCard.classList.add('is-letter-fill');
@@ -2711,10 +2867,10 @@ class GameEngine {
       } else {
         this.questionCard.classList.remove('is-sentence-order');
       }
-      if (!q.isAudioQuiz && q.mode === 'voice_check') {
-        this.questionCard.classList.add('is-voice-check');
+      if (!q.isAudioQuiz && (q.mode === 'dictation' || q.isDictation)) {
+        this.questionCard.classList.add('is-dictation');
       } else {
-        this.questionCard.classList.remove('is-voice-check');
+        this.questionCard.classList.remove('is-dictation');
       }
     }
 
@@ -2724,15 +2880,10 @@ class GameEngine {
       } else {
         this.letterBoxContainer.classList.remove('sentence-order-tray');
       }
-      if (!q.isAudioQuiz && q.mode === 'voice_check') {
-        this.letterBoxContainer.classList.add('voice-phrase-tray');
-      } else {
-        this.letterBoxContainer.classList.remove('voice-phrase-tray');
-      }
     }
 
     if (this.audioQuizPanel) {
-      this.audioQuizPanel.style.display = q.isAudioQuiz ? 'flex' : 'none';
+      this.audioQuizPanel.style.display = (q.isAudioQuiz || q.isDictation || q.mode === 'dictation') ? 'flex' : 'none';
     }
 
     this.applySmartTextScale(q, hasVisibleVocabImage);
@@ -2750,17 +2901,36 @@ class GameEngine {
           speechEngine.speakWord(wordToPlay, 0.92);
         }
       }, 150);
-    } else if (q.mode === 'voice_check') {
-      this.promptText.textContent = q.prompt || '🎙️ Phát âm chuẩn từ vựng hoặc cụm từ dưới đây:';
-      this.letterBoxContainer.style.display = 'flex';
-      const targetWord = q.voiceTargetWord || q.target_word || 'vocabulary';
-      const phoneticStr = q.phonetic ? `<span class="voice-ipa-line">${q.phonetic}</span>` : '';
-      this.questionMainText.innerHTML = `
-        <span class="voice-word-hero">${targetWord}</span>
-        ${phoneticStr}
-        <span class="voice-vn-line">💡 “${q.vietnamese}”</span>
-      `;
-      this.renderInteractiveVoiceCheck(q);
+    } else if (q.mode === 'dictation' || q.isDictation) {
+      this.promptText.textContent = q.prompt || '✍️ Nghe phát âm và chép lại đúng chính tả từ vựng:';
+      this.letterBoxContainer.style.display = 'none';
+      const targetWord = q.dictationTargetWord || q.dictationTarget || q.target_word || 'sustainable';
+      const maskedSent = q.dictationMaskedSentence || `We should ____ every day.`;
+      this.questionMainText.innerHTML = '';
+
+      const sentenceLine = document.createElement('span');
+      sentenceLine.className = 'dictation-sentence-line';
+      const parts = maskedSent.split(/_{2,}/);
+      const preText = document.createElement('span');
+      preText.textContent = parts[0] || '';
+      const inlineSlot = document.createElement('span');
+      inlineSlot.className = 'dictation-inline-slot';
+      inlineSlot.id = 'dictation-inline-slot';
+      inlineSlot.textContent = '_'.repeat(Math.min(12, Math.max(4, targetWord.length)));
+      this.currentDictationInlineSlot = inlineSlot;
+      const postText = document.createElement('span');
+      postText.textContent = parts.slice(1).join('') || '';
+      sentenceLine.appendChild(preText);
+      sentenceLine.appendChild(inlineSlot);
+      sentenceLine.appendChild(postText);
+
+      const meaningCue = document.createElement('span');
+      meaningCue.className = 'dictation-meaning-cue';
+      meaningCue.innerHTML = `💡 Nghĩa: “${q.vietnamese}” • <span class="dictation-len-pill">${targetWord.length} chữ cái</span>`;
+
+      this.questionMainText.appendChild(sentenceLine);
+      this.questionMainText.appendChild(meaningCue);
+      this.renderInteractiveDictation(q);
     } else if (q.mode === 'sentence_order') {
       this.promptText.textContent = q.prompt || '🧩 Chạm các cụm từ để ghép thành câu đúng:';
       this.letterBoxContainer.style.display = 'flex';
@@ -2780,8 +2950,12 @@ class GameEngine {
     } else if (q.sentence) {
       this.promptText.textContent = q.prompt || 'Chọn đáp án học thuật chính xác:';
       this.letterBoxContainer.style.display = 'none';
-      const highlightedSentence = (qMeta && qMeta.highlightedSentence) || q.sentence.replace(/_{2,}/g, '<span class="blank-slot">____</span>');
-      this.questionMainText.innerHTML = highlightedSentence;
+      if (q.isGrammarRedo && q.grammarCoachData && q.grammarCoachData.highlightedRedoSentence) {
+        this.questionMainText.innerHTML = q.grammarCoachData.highlightedRedoSentence;
+      } else {
+        const highlightedSentence = (qMeta && qMeta.highlightedSentence) || q.sentence.replace(/_{2,}/g, '<span class="blank-slot">____</span>');
+        this.questionMainText.innerHTML = highlightedSentence;
+      }
       this.renderAnswerButtons(q);
     } else {
       this.promptText.textContent = 'Chọn đáp án chính xác:';
@@ -2798,8 +2972,8 @@ class GameEngine {
     if (this.academicHintPill) {
       if (q.isAudioQuiz) {
         this.academicHintPill.innerHTML = `🎧 Luyện phản xạ Nghe phát âm chuẩn`;
-      } else if (q.mode === 'voice_check') {
-        this.academicHintPill.innerHTML = `🎙️ Đạt ≥ 65% độ chuẩn để qua màn`;
+      } else if (q.mode === 'dictation' || q.isDictation) {
+        this.academicHintPill.innerHTML = `✍️ Nghe chép chính tả (${(q.dictationTargetWord || q.target_word || '').length} chữ cái)`;
       } else if (q.mode === 'sentence_order') {
         const chunkLen = Array.isArray(q.wordChunks) ? q.wordChunks.length : 5;
         this.academicHintPill.innerHTML = `🧩 Ghép ${chunkLen} cụm từ thành câu`;
@@ -2826,7 +3000,7 @@ class GameEngine {
     if (!this.questionMainText || !this.questionMainText.classList) return;
     this.questionMainText.classList.remove('text-scale-xl', 'text-scale-md', 'text-scale-sm', 'text-scale-xs');
 
-    if (q.isAudioQuiz || q.mode === 'sentence_order' || q.mode === 'voice_check') {
+    if (q.isAudioQuiz || q.mode === 'sentence_order' || q.mode === 'dictation' || q.isDictation) {
       this.questionMainText.classList.add('text-scale-sm');
       return;
     }
@@ -3331,407 +3505,286 @@ class GameEngine {
     }
   }
 
-  renderInteractiveVoiceCheck(q) {
+  buildDictationCharDiff(userStr, targetStr) {
+    const target = String(targetStr || '').trim().toLowerCase();
+    const user = String(userStr || '').trim().toLowerCase();
+    let html = '';
+    for (let i = 0; i < target.length; i++) {
+      const expected = target[i];
+      const actual = user[i] || '';
+      if (actual === expected) {
+        html += `<span class="dict-char-ok">${expected}</span>`;
+      } else {
+        html += `<span class="dict-char-err" title="Chữ đúng: ${expected}">${expected}</span>`;
+      }
+    }
+    return html;
+  }
+
+  renderInteractiveDictation(q) {
     this.answersContainer.innerHTML = '';
     this.letterBoxContainer.innerHTML = '';
 
-    const targetWord = q.voiceTargetWord || q.target_word || 'sustainable';
-    const coachMeta = this.analyzeWordSyllablesAndTip(targetWord, q.phonetic || '');
+    const targetWord = String(q.dictationTargetWord || q.dictationTarget || q.target_word || 'sustainable').trim().toLowerCase();
+    const rawLetters = q.dictationScrambledLetters || q.dictationLetters;
+    const scrambled = Array.isArray(rawLetters) && rawLetters.length === targetWord.length
+      ? rawLetters.map(c => String(c).toUpperCase())
+      : shuffleArray(targetWord.toUpperCase().split(''));
 
-    const tokens = Array.isArray(q.voiceTokens) && q.voiceTokens.length > 0
-      ? q.voiceTokens
-      : ['We', 'practice', targetWord, 'today'];
-
-    const tokenEls = [];
-    tokens.forEach((wordStr, idx) => {
-      const span = document.createElement('span');
-      span.className = 'voice-word-token';
-      span.textContent = wordStr;
-      if (!span.dataset) span.dataset = {};
-      span.dataset.tokenIndex = String(idx);
-      span.dataset.word = wordStr.toLowerCase().replace(/[^a-z]/g, '');
-      span.title = `Chạm để nghe phát âm từ "${wordStr}"`;
-      span.addEventListener('click', () => {
-        this.triggerHaptic('light');
-        if (typeof speechEngine !== 'undefined') {
-          speechEngine.speakWord(wordStr, 0.86);
-        }
-      });
-      tokenEls.push(span);
-      this.letterBoxContainer.appendChild(span);
-    });
-    this.currentVoiceTokenEls = tokenEls;
+    this.dictationState = {
+      targetWord,
+      typedValue: ''
+    };
 
     const arena = document.createElement('div');
-    arena.className = 'voice-check-arena';
+    arena.className = 'dictation-arena';
 
-    // Dải tách âm tiết & trọng âm trực quan (Syllable Breakdown Bar: ví dụ sus - TAIN - a - ble)
-    const syllableStrip = document.createElement('div');
-    syllableStrip.className = 'voice-syllable-strip';
-    syllableStrip.id = 'voice-syllable-strip';
-    const sylLabel = document.createElement('span');
-    sylLabel.className = 'voice-syllable-label';
-    sylLabel.textContent = 'Âm tiết & Trọng âm:';
-    syllableStrip.appendChild(sylLabel);
+    // 1. Dòng nhập chính tả trực tiếp + Nút Kiểm tra ✓
+    const inputRow = document.createElement('div');
+    inputRow.className = 'dictation-input-row';
 
-    const syllableEls = [];
-    (coachMeta.syllables || [targetWord]).forEach((syl, sIdx) => {
-      if (sIdx > 0) {
-        const sep = document.createElement('span');
-        sep.className = 'voice-syllable-sep';
-        sep.textContent = '•';
-        syllableStrip.appendChild(sep);
+    const inputEl = document.createElement('input');
+    inputEl.type = 'text';
+    inputEl.className = 'dictation-input-box';
+    inputEl.id = 'dictation-input';
+    inputEl.placeholder = `Gõ hoặc chạm ${targetWord.length} chữ cái...`;
+    inputEl.maxLength = targetWord.length + 4;
+    inputEl.autocomplete = 'off';
+    inputEl.autocapitalize = 'off';
+    inputEl.spellcheck = false;
+    this.currentDictationInput = inputEl;
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'btn-dictation-submit';
+    submitBtn.id = 'btn-dictation-submit';
+    submitBtn.innerHTML = 'Kiểm tra ✓';
+    this.attachTactileHaptics(submitBtn, 'medium');
+    this.currentDictationSubmitBtn = submitBtn;
+
+    inputRow.appendChild(inputEl);
+    inputRow.appendChild(submitBtn);
+
+    // 2. Khay chữ cái chạm nhanh (giúp trên điện thoại/máy tính bảng không bắt buộc bật bàn phím ảo)
+    const letterBank = document.createElement('div');
+    letterBank.className = 'dictation-letter-bank';
+    letterBank.id = 'dictation-letter-bank';
+
+    const chipBtns = [];
+    const syncSlotAndChipsFromInput = () => {
+      const val = String(inputEl.value || '').trim();
+      if (this.dictationState) {
+        this.dictationState.typedValue = val;
       }
-      const sylChip = document.createElement('button');
-      sylChip.type = 'button';
-      const isStressed = sIdx === coachMeta.stressIndex;
-      sylChip.className = `voice-syllable-chip${isStressed ? ' stressed-syllable' : ''}`;
-      sylChip.textContent = isStressed ? syl.toUpperCase() : syl.toLowerCase();
-      sylChip.title = isStressed
-        ? `Âm tiết thứ ${sIdx + 1} nhấn trọng âm chính (${syl.toUpperCase()}) - Chạm để nghe chậm`
-        : `Âm tiết thứ ${sIdx + 1} (${syl}) - Chạm để nghe chậm`;
-      sylChip.addEventListener('click', () => {
-        this.triggerHaptic('light');
-        if (typeof speechEngine !== 'undefined') {
-          speechEngine.speakWord(targetWord, 0.75);
+      const inlineSlot = this.currentDictationInlineSlot || document.getElementById('dictation-inline-slot');
+      if (inlineSlot) {
+        if (val.length === 0) {
+          inlineSlot.textContent = '_'.repeat(Math.min(12, Math.max(4, targetWord.length)));
+          inlineSlot.classList.remove('typing-active', 'filled');
+        } else {
+          const remainingCount = Math.max(0, targetWord.length - val.length);
+          inlineSlot.textContent = val.toLowerCase() + (remainingCount > 0 ? '_'.repeat(Math.min(8, remainingCount)) : '');
+          inlineSlot.classList.add('typing-active', 'filled');
+        }
+      }
+
+      // Đồng bộ trạng thái .used của các phím chữ cái theo chuỗi đang nhập
+      const upperValChars = val.toUpperCase().split('');
+      chipBtns.forEach(btn => {
+        btn.classList.remove('used');
+        btn.disabled = false;
+      });
+      upperValChars.forEach(ch => {
+        const match = chipBtns.find(b => !b.classList.contains('used') && b.dataset.char === ch);
+        if (match) {
+          match.classList.add('used');
+          match.disabled = true;
         }
       });
-      syllableEls.push(sylChip);
-      syllableStrip.appendChild(sylChip);
+    };
+    this.syncDictationUI = syncSlotAndChipsFromInput;
+
+    scrambled.forEach((charUpper, idx) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'dictation-letter-chip';
+      chip.textContent = charUpper;
+      if (!chip.dataset) chip.dataset = {};
+      chip.dataset.char = charUpper;
+      chip.dataset.chipIndex = String(idx);
+
+      chip.addEventListener('click', () => {
+        if (this.isAnsweringLocked) return;
+        this.triggerHaptic('light');
+        soundEngine.playTick(false);
+        inputEl.value = `${inputEl.value || ''}${charUpper.toLowerCase()}`;
+        syncSlotAndChipsFromInput();
+
+        if (inputEl.value.trim().length >= targetWord.length) {
+          this.evaluateDictation(q, inputEl.value);
+        }
+      });
+
+      this.attachTactileHaptics(chip, 'light');
+      chipBtns.push(chip);
+      letterBank.appendChild(chip);
     });
-    this.currentVoiceSyllableEls = syllableEls;
+    this.currentDictationChips = chipBtns;
 
-    const statusLine = document.createElement('div');
-    statusLine.className = 'voice-status-line';
-    statusLine.id = 'voice-status-line';
-    statusLine.innerHTML = `<span>🎙️ Chạm Micro để đọc (Nhấn rõ: <strong>${coachMeta.formattedSyllables}</strong>)</span>`;
-
-    // Hộp AI Phonetic Coach 1 dòng (Hiển thị cách đặt lưỡi / trọng âm + nút phát lại đúng từ bị đọc lệch)
-    const aiCoachBanner = document.createElement('div');
-    aiCoachBanner.className = 'voice-ai-coach-banner';
-    aiCoachBanner.id = 'voice-ai-coach-banner';
-    aiCoachBanner.style.display = 'none';
-    this.currentVoiceCoachBanner = aiCoachBanner;
-
-    const micBtn = document.createElement('button');
-    micBtn.type = 'button';
-    micBtn.className = 'btn-voice-mic-main';
-    micBtn.id = 'btn-voice-record';
-    micBtn.innerHTML = `
-      <span class="voice-mic-icon-ring">🎙️</span>
-      <span class="voice-mic-label">Chạm để phát âm</span>
-    `;
-    this.attachTactileHaptics(micBtn, 'medium');
-    micBtn.addEventListener('click', () => {
+    inputEl.addEventListener('input', () => {
       if (this.isAnsweringLocked) return;
-      this.startVoiceRecognition(q, micBtn, statusLine);
+      syncSlotAndChipsFromInput();
     });
 
-    const quickActions = document.createElement('div');
-    quickActions.className = 'voice-quick-actions';
-
-    const btnListen = document.createElement('button');
-    btnListen.type = 'button';
-    btnListen.className = 'btn-voice-secondary';
-    btnListen.id = 'btn-voice-listen-sample';
-    btnListen.innerHTML = '🔊 Nghe mẫu';
-    btnListen.addEventListener('click', () => {
-      this.triggerHaptic('light');
-      const phraseToSpeak = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
-      if (typeof speechEngine !== 'undefined' && phraseToSpeak) {
-        speechEngine.speakWord(phraseToSpeak, 0.92);
+    inputEl.addEventListener('keydown', (e) => {
+      if (this.isAnsweringLocked) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.triggerHaptic('medium');
+        this.evaluateDictation(q, inputEl.value);
       }
     });
 
-    const btnSimSpeak = document.createElement('button');
-    btnSimSpeak.type = 'button';
-    btnSimSpeak.className = 'btn-voice-secondary';
-    btnSimSpeak.id = 'btn-voice-sim-speak';
-    btnSimSpeak.innerHTML = '✨ Đọc chuẩn mẫu';
-    btnSimSpeak.addEventListener('click', () => {
+    submitBtn.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('medium');
+      this.evaluateDictation(q, inputEl.value);
+    });
+
+    // 3. Hàng nút thao tác nhanh: Xóa 1 chữ, Xóa hết & Gợi ý 1 chữ
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'letter-fill-actions dictation-actions-row';
+
+    const btnBackspace = document.createElement('button');
+    btnBackspace.type = 'button';
+    btnBackspace.className = 'btn-dictation-sub';
+    btnBackspace.id = 'btn-dictation-backspace';
+    btnBackspace.innerHTML = '⌫ Xóa 1 chữ';
+    btnBackspace.addEventListener('click', () => {
       if (this.isAnsweringLocked) return;
       this.triggerHaptic('light');
-      if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
-        soundEngine.playMicCue(true);
+      const cur = String(inputEl.value || '');
+      if (!cur) return;
+      inputEl.value = cur.slice(0, -1);
+      syncSlotAndChipsFromInput();
+      soundEngine.playTick(false);
+    });
+
+    const btnClear = document.createElement('button');
+    btnClear.type = 'button';
+    btnClear.className = 'btn-dictation-sub';
+    btnClear.id = 'btn-dictation-clear';
+    btnClear.innerHTML = '🔄 Xóa hết';
+    btnClear.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('light');
+      inputEl.value = '';
+      syncSlotAndChipsFromInput();
+      soundEngine.playTick(false);
+    });
+
+    const btnHintChar = document.createElement('button');
+    btnHintChar.type = 'button';
+    btnHintChar.className = 'btn-dictation-sub btn-dictation-hint';
+    btnHintChar.id = 'btn-dictation-hint-char';
+    btnHintChar.innerHTML = '💡 Gợi ý chữ';
+    btnHintChar.addEventListener('click', () => {
+      if (this.isAnsweringLocked) return;
+      this.triggerHaptic('light');
+      soundEngine.playTick(false);
+      const cur = String(inputEl.value || '').toLowerCase();
+      let matchPrefixLen = 0;
+      while (matchPrefixLen < cur.length && matchPrefixLen < targetWord.length && cur[matchPrefixLen] === targetWord[matchPrefixLen]) {
+        matchPrefixLen++;
       }
-      const sampleSpoken = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
-      this.evaluateVoicePronunciation(q, sampleSpoken, statusLine);
+      const nextLen = Math.min(targetWord.length, matchPrefixLen + 1);
+      inputEl.value = targetWord.slice(0, nextLen);
+      syncSlotAndChipsFromInput();
+      if (typeof speechEngine !== 'undefined') {
+        speechEngine.speakWord(targetWord, 0.82);
+      }
+      if (inputEl.value.length >= targetWord.length) {
+        this.evaluateDictation(q, inputEl.value);
+      }
     });
 
-    const btnSimMispronounce = document.createElement('button');
-    btnSimMispronounce.type = 'button';
-    btnSimMispronounce.className = 'btn-voice-secondary btn-voice-coach-test';
-    btnSimMispronounce.id = 'btn-voice-sim-mispronounce';
-    btnSimMispronounce.innerHTML = '🎯 Thử AI sửa lỗi';
-    btnSimMispronounce.title = 'Giả lập đọc lệch từ khóa để xem AI Phonetic Coach chỉ cách đặt lưỡi & phát lại từ sai';
-    btnSimMispronounce.addEventListener('click', () => {
-      if (this.isAnsweringLocked) return;
-      this.triggerHaptic('light');
-      const misSpoken = tokens
-        .map(t => (t.toLowerCase().replace(/[^a-z]/g, '') === targetWord.toLowerCase().replace(/[^a-z]/g, '') ? 'wrongsound' : t))
-        .join(' ');
-      this.evaluateVoicePronunciation(q, misSpoken, statusLine);
-    });
+    actionsRow.appendChild(btnBackspace);
+    actionsRow.appendChild(btnClear);
+    actionsRow.appendChild(btnHintChar);
 
-    quickActions.appendChild(btnListen);
-    quickActions.appendChild(btnSimSpeak);
-    quickActions.appendChild(btnSimMispronounce);
-
-    arena.appendChild(syllableStrip);
-    arena.appendChild(statusLine);
-    arena.appendChild(aiCoachBanner);
-    arena.appendChild(micBtn);
-    arena.appendChild(quickActions);
+    arena.appendChild(inputRow);
+    arena.appendChild(letterBank);
+    arena.appendChild(actionsRow);
 
     this.answersContainer.appendChild(arena);
 
-    // Tự động phát âm mẫu khi vào câu hỏi
+    // Tự động phát âm chuẩn từ vựng khi bắt đầu câu Nghe Chép Chính Tả
     setTimeout(() => {
-      if (typeof speechEngine !== 'undefined' && targetWord && !this.isAnsweringLocked) {
-        speechEngine.speakWord(targetWord, 0.92);
+      if (!this.isAnsweringLocked) {
+        this.triggerAudioWaveAnimation(950);
+        if (typeof speechEngine !== 'undefined' && targetWord) {
+          speechEngine.speakWord(targetWord, 0.92);
+        }
       }
-    }, 160);
+    }, 150);
   }
 
-  computeTextSimilarity(strA, strB) {
-    const a = String(strA || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
-    const b = String(strB || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
-    if (!a || !b) return 0;
-    if (a === b) return 1;
-    const minLen = Math.min(a.length, b.length);
-    const maxLen = Math.max(a.length, b.length);
-    if (minLen >= 4 && minLen / maxLen >= 0.7 && (a.includes(b) || b.includes(a))) {
-      return 0.92;
-    }
-
-    const lenA = a.length;
-    const lenB = b.length;
-    const dp = Array.from({ length: lenA + 1 }, () => Array(lenB + 1).fill(0));
-    for (let i = 0; i <= lenA; i++) dp[i][0] = i;
-    for (let j = 0; j <= lenB; j++) dp[0][j] = j;
-
-    for (let i = 1; i <= lenA; i++) {
-      for (let j = 1; j <= lenB; j++) {
-        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-        dp[i][j] = Math.min(
-          dp[i - 1][j] + 1,
-          dp[i][j - 1] + 1,
-          dp[i - 1][j - 1] + cost
-        );
-      }
-    }
-    return maxLen > 0 ? Math.max(0, 1 - dp[lenA][lenB] / maxLen) : 0;
-  }
-
-  startVoiceRecognition(q, micBtn, statusLine) {
+  evaluateDictation(q, rawUserText) {
     if (this.isAnsweringLocked) return;
 
-    if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
-      soundEngine.playMicCue(true);
-    }
-    this.triggerHaptic('medium');
+    const targetWord = String(q.dictationTargetWord || q.dictationTarget || q.target_word || 'sustainable').trim();
+    const cleanTarget = targetWord.toLowerCase();
+    const cleanUser = String(rawUserText || '').trim().toLowerCase();
+    const isCorrect = cleanUser === cleanTarget;
 
-    const SpeechRecognitionAPI = (typeof window !== 'undefined')
-      ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-      : null;
-
-    if (micBtn && micBtn.classList) {
-      micBtn.classList.add('listening');
-    }
-    if (statusLine) {
-      statusLine.innerHTML = `<span style="color:#34d399;">🎙️ Đang lắng nghe từng âm tiết của bạn...</span>`;
-    }
-
-    if (!SpeechRecognitionAPI) {
-      // Fallback thông minh trên trình duyệt/môi trường không hỗ trợ Web Speech API trực tiếp
-      setTimeout(() => {
-        if (this.isAnsweringLocked) return;
-        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
-        if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
-          soundEngine.playMicCue(false);
-        }
-        const simulatedTranscript = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
-        this.evaluateVoicePronunciation(q, simulatedTranscript, statusLine);
-      }, 650);
-      return;
-    }
-
-    try {
-      if (this.activeSpeechRecognition) {
-        try { this.activeSpeechRecognition.abort(); } catch (e) {}
-      }
-      const recognition = new SpeechRecognitionAPI();
-      this.activeSpeechRecognition = recognition;
-      recognition.lang = 'en-US';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 3;
-
-      let handled = false;
-      recognition.onresult = (event) => {
-        if (handled || this.isAnsweringLocked) return;
-        handled = true;
-        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
-        if (typeof soundEngine !== 'undefined' && soundEngine.playMicCue) {
-          soundEngine.playMicCue(false);
-        }
-        let bestTranscript = '';
-        if (event.results && event.results[0]) {
-          for (let i = 0; i < event.results[0].length; i++) {
-            const candidate = event.results[0][i].transcript || '';
-            if (!bestTranscript) bestTranscript = candidate;
-            const targetCheck = (q.voiceTargetWord || q.target_word || '').toLowerCase();
-            if (candidate.toLowerCase().includes(targetCheck)) {
-              bestTranscript = candidate;
-              break;
-            }
-          }
-        }
-        this.evaluateVoicePronunciation(q, bestTranscript, statusLine);
-      };
-
-      recognition.onerror = () => {
-        if (handled || this.isAnsweringLocked) return;
-        handled = true;
-        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
-        if (statusLine) {
-          statusLine.innerHTML = `<span style="color:#fbbf24;">💡 Không nghe rõ mic — Chạm "✨ Đọc chuẩn mẫu" hoặc "🎯 Thử AI sửa lỗi"</span>`;
-        }
-      };
-
-      recognition.onend = () => {
-        if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
-      };
-
-      recognition.start();
-    } catch (err) {
-      if (micBtn && micBtn.classList) micBtn.classList.remove('listening');
-      const fallbackTranscript = q.voicePhrase || q.voiceTargetWord || q.target_word || '';
-      this.evaluateVoicePronunciation(q, fallbackTranscript, statusLine);
-    }
-  }
-
-  evaluateVoicePronunciation(q, spokenText, statusLineEl = null) {
-    if (this.isAnsweringLocked) return;
-
-    const cleanSpoken = String(spokenText || '').trim();
-    const targetWord = String(q.voiceTargetWord || q.target_word || 'sustainable').trim();
-    const cleanTargetAlpha = targetWord.toLowerCase().replace(/[^a-z]/g, '');
-    const targetPhrase = String(q.voicePhrase || targetWord).trim();
-
-    const spokenWords = cleanSpoken.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
-    const tokens = Array.isArray(q.voiceTokens) && q.voiceTokens.length > 0
-      ? q.voiceTokens
-      : [targetWord];
-
-    let matchedCount = 0;
-    let targetWordMatched = false;
-    const missedWords = [];
-    const tokenEls = this.currentVoiceTokenEls || [];
-
-    tokens.forEach((tok, idx) => {
-      const cleanTok = tok.toLowerCase().replace(/[^a-z]/g, '');
-      const isMatched = spokenWords.some(sw => this.computeTextSimilarity(sw, cleanTok) >= 0.72)
-        || (spokenWords.length === 1 && this.computeTextSimilarity(cleanSpoken, cleanTok) >= 0.76);
-      if (isMatched) {
-        matchedCount++;
-        if (cleanTok === cleanTargetAlpha) targetWordMatched = true;
-      } else {
-        missedWords.push(tok);
-      }
-      const el = tokenEls[idx];
-      if (el && el.classList) {
-        el.classList.remove('spoken-match', 'spoken-miss', 'shake-miss');
-        el.classList.add(isMatched ? 'spoken-match' : 'spoken-miss');
-        if (!isMatched) {
-          el.classList.add('shake-miss');
-        }
-      }
-    });
-
-    const simWord = spokenWords.length > 0
-      ? Math.max(...spokenWords.map(sw => this.computeTextSimilarity(sw, cleanTargetAlpha)), this.computeTextSimilarity(cleanSpoken, targetWord))
-      : 0;
-    if (simWord >= 0.75) {
-      targetWordMatched = true;
-    }
-
-    const simPhrase = this.computeTextSimilarity(cleanSpoken, targetPhrase);
-    const tokenRatio = tokens.length > 0 ? matchedCount / tokens.length : 0;
-
-    // Nếu từ khóa mục tiêu chính bị đọc sai (targetWordMatched === false) thì tính điểm nghiêm ngặt để kích hoạt AI Phonetic Coach sửa lỗi
-    const rawScore = targetWordMatched
-      ? Math.max(simWord, simPhrase, tokenRatio)
-      : Math.min(0.58, (tokenRatio * 0.5) + (simWord * 0.3));
-    const accuracyPct = Math.min(100, Math.max(0, Math.round(rawScore * 100)));
-    const isCorrect = accuracyPct >= 65 && targetWordMatched;
-
-    // Xác định chính xác từ bị đọc lệch (ưu tiên từ mục tiêu nếu đọc sai từ mục tiêu)
-    const mispronouncedWord = !targetWordMatched
-      ? targetWord
-      : (missedWords[0] || targetWord);
-    const coachData = this.analyzeWordSyllablesAndTip(mispronouncedWord, q.phonetic || '', cleanSpoken);
-
-    q.lastMispronouncedWord = isCorrect && missedWords.length === 0 ? '' : mispronouncedWord;
-    q.lastVoiceCoachTip = coachData.oneLineCoachTip;
-    q.lastFormattedSyllables = coachData.formattedSyllables;
-    this.lastMispronouncedWord = q.lastMispronouncedWord;
-    this.lastPhoneticCoachTip = coachData.oneLineCoachTip;
-
-    // Cập nhật dải âm tiết & trọng âm nếu từ bị lệch có tách âm tiết
-    if (Array.isArray(this.currentVoiceSyllableEls) && this.currentVoiceSyllableEls.length > 0) {
-      this.currentVoiceSyllableEls.forEach((chipEl, sIdx) => {
-        if (!chipEl || !chipEl.classList) return;
-        chipEl.classList.remove('stress-error-pulse', 'stress-match-glow');
-        if (isCorrect) {
-          chipEl.classList.add('stress-match-glow');
-        } else if (sIdx === coachData.stressIndex) {
-          chipEl.classList.add('stress-error-pulse');
-        }
-      });
-    }
-
-    const statusLine = statusLineEl || (this.answersContainer && this.answersContainer.querySelector
-      ? this.answersContainer.querySelector('#voice-status-line')
-      : null);
-    if (statusLine) {
-      statusLine.innerHTML = `
-        <span>🎙️ Bạn đọc: <strong>“${cleanSpoken || '...'}”</strong></span>
-        <span class="voice-score-pill">${accuracyPct}%</span>
-      `;
-    }
-
-    // Hiển thị 1 dòng hướng dẫn AI Phonetic Coach ngay trên màn hình Luyện Phát Âm
-    const coachBanner = this.currentVoiceCoachBanner || (this.answersContainer && this.answersContainer.querySelector
-      ? this.answersContainer.querySelector('#voice-ai-coach-banner')
-      : null);
-    if (coachBanner) {
-      coachBanner.style.display = 'flex';
-      if (isCorrect && missedWords.length === 0) {
-        coachBanner.className = 'voice-ai-coach-banner coach-pass';
-        coachBanner.innerHTML = `
-          <span class="coach-one-line-text">✨ Chuẩn trọng âm: <strong>${coachData.formattedSyllables}</strong></span>
-        `;
-      } else {
-        coachBanner.className = 'voice-ai-coach-banner coach-fix';
-        coachBanner.innerHTML = `
-          <span class="coach-one-line-text">🎙️ ${coachData.oneLineCoachTip}</span>
-          <button type="button" class="btn-coach-replay-word" id="btn-coach-replay-word" title="Phát lại từ bị đọc lệch">🔊 ${mispronouncedWord}</button>
-        `;
-        const replayMisBtn = coachBanner.querySelector ? coachBanner.querySelector('#btn-coach-replay-word') : null;
-        if (replayMisBtn && typeof replayMisBtn.addEventListener === 'function') {
-          replayMisBtn.addEventListener('click', (e) => {
-            if (e && e.stopPropagation) e.stopPropagation();
-            this.triggerHaptic('light');
-            if (typeof speechEngine !== 'undefined') {
-              speechEngine.speakWord(mispronouncedWord, 0.8);
-            }
-          });
-        }
-      }
-    }
+    q.lastDictationUserText = String(rawUserText || '').trim();
+    const diffHtml = this.buildDictationCharDiff(cleanUser, cleanTarget);
 
     this.isAnsweringLocked = true;
     clearInterval(this.timerInterval);
+
+    const inputEl = this.currentDictationInput || document.getElementById('dictation-input');
+    const submitBtn = this.currentDictationSubmitBtn || document.getElementById('btn-dictation-submit');
+    const inlineSlot = this.currentDictationInlineSlot || document.getElementById('dictation-inline-slot');
+
+    if (inputEl) {
+      inputEl.value = isCorrect ? cleanTarget : (rawUserText || cleanTarget);
+      inputEl.disabled = true;
+      if (inputEl.classList) {
+        inputEl.classList.remove('dictation-correct', 'dictation-wrong', 'input-correct', 'input-wrong');
+        inputEl.classList.add(isCorrect ? 'dictation-correct' : 'dictation-wrong');
+        inputEl.classList.add(isCorrect ? 'input-correct' : 'input-wrong');
+      }
+    }
+    if (submitBtn) {
+      submitBtn.disabled = true;
+    }
+    if (Array.isArray(this.currentDictationChips)) {
+      this.currentDictationChips.forEach(chip => {
+        chip.disabled = true;
+      });
+    }
+    if (inlineSlot) {
+      if (isCorrect) {
+        inlineSlot.textContent = cleanTarget;
+        if (inlineSlot.classList) {
+          inlineSlot.classList.remove('typing-active');
+          inlineSlot.classList.remove('slot-filled-reveal');
+          inlineSlot.classList.remove('slot-wrong');
+          inlineSlot.classList.add('slot-filled-correct');
+          inlineSlot.classList.add('slot-correct');
+        }
+      } else {
+        inlineSlot.innerHTML = diffHtml;
+        if (inlineSlot.classList) {
+          inlineSlot.classList.remove('typing-active');
+          inlineSlot.classList.remove('slot-filled-correct');
+          inlineSlot.classList.remove('slot-correct');
+          inlineSlot.classList.add('slot-filled-reveal');
+          inlineSlot.classList.add('slot-wrong');
+        }
+      }
+    }
 
     const timeTaken = (Date.now() - this.questionStartTime) / 1000;
     this.responseTimes.push(timeTaken);
@@ -3739,12 +3792,6 @@ class GameEngine {
     this.updateMemoryProfile(q, isCorrect, timeTaken);
 
     if (isCorrect) {
-      tokenEls.forEach(el => {
-        if (el && el.classList) {
-          el.classList.remove('spoken-miss', 'shake-miss');
-          el.classList.add('spoken-match');
-        }
-      });
       this.triggerHaptic('success');
       this.handleCorrectAnswer(timeTaken);
       this.roundResults.push(true);
@@ -3752,7 +3799,6 @@ class GameEngine {
       this.renderSegmentedRoundBar();
       this.showFeedbackDrawer(true, q, false, retentionRate);
     } else {
-      // KÍCH HOẠT PHẢN HỒI RUNG CẢNH BÁO + PHÁT LẠI ĐÚNG TỪ BỊ ĐỌC LỆCH + GỌI AI COACH
       this.triggerHaptic('error');
       this.handleWrongAnswer(false);
       this.roundResults.push(false);
@@ -3760,32 +3806,18 @@ class GameEngine {
       this.renderSegmentedRoundBar();
       this.showFeedbackDrawer(false, q, false, retentionRate);
 
-      // Tự động phát lại đúng từ bị đọc lệch với tốc độ rõ từng âm tiết (0.82x)
-      if (typeof speechEngine !== 'undefined' && mispronouncedWord) {
-        speechEngine.speakWord(mispronouncedWord, 0.82);
+      // Tự động phát lại từ đúng chậm rãi (0.72x) khi học sinh chép sai chính tả
+      if (typeof speechEngine !== 'undefined' && cleanTarget) {
+        speechEngine.speakWord(cleanTarget, 0.72);
       }
-
-      // Đồng bộ thêm với AI Gemini Phonetic Coach trên server (lưu LocalStorage để 0ms cho các lần sau)
-      this.fetchAIPhoneticCoachTip(q, mispronouncedWord, cleanSpoken, (aiCoach) => {
-        if (!aiCoach || !aiCoach.oneLineCoachTip) return;
-        q.lastVoiceCoachTip = aiCoach.oneLineCoachTip;
-        q.lastFormattedSyllables = aiCoach.formattedSyllables;
-        this.lastPhoneticCoachTip = aiCoach.oneLineCoachTip;
-        if (coachBanner && coachBanner.querySelector) {
-          const textEl = coachBanner.querySelector('.coach-one-line-text');
-          if (textEl) textEl.textContent = `🎙️ ${aiCoach.oneLineCoachTip}`;
-        }
-        if (this.feedbackExplanation && this.questions[this.currentIndex] === q) {
-          this.feedbackExplanation.textContent = `🎙️ AI Coach: ${aiCoach.oneLineCoachTip}`;
-        }
-      });
     }
+
     return {
       isCorrect,
-      accuracyPct,
-      mispronouncedWord,
-      formattedSyllables: coachData.formattedSyllables,
-      coachTip: coachData.oneLineCoachTip
+      targetWord: cleanTarget,
+      target: cleanTarget,
+      userText: cleanUser,
+      diffHtml
     };
   }
 
@@ -3841,7 +3873,7 @@ class GameEngine {
   startTimer() {
     clearInterval(this.timerInterval);
     const currentQ = this.questions && this.questions[this.currentIndex];
-    const roundLimit = (currentQ && (currentQ.mode === 'sentence_order' || currentQ.mode === 'voice_check') && !currentQ.isAudioQuiz)
+    const roundLimit = (currentQ && (currentQ.mode === 'sentence_order' || currentQ.mode === 'dictation' || currentQ.isDictation) && !currentQ.isAudioQuiz)
       ? 30.0
       : (this.activeRoundTimeLimit || this.maxTimeSeconds);
     this.remainingTime = roundLimit;
@@ -3953,6 +3985,7 @@ class GameEngine {
         if (correctBadge) correctBadge.textContent = '✓';
       }
       this.triggerHaptic('error');
+      q.lastWrongSelectedIndex = selectedIndex;
       this.handleWrongAnswer();
     }
 
@@ -4000,6 +4033,19 @@ class GameEngine {
       }
       const tileBtns = this.answersContainer.querySelectorAll ? this.answersContainer.querySelectorAll('.letter-tile-btn') : [];
       if (tileBtns && tileBtns.forEach) tileBtns.forEach(btn => { btn.disabled = true; });
+    } else if (q.mode === 'dictation' || q.isDictation) {
+      const targetWord = q.dictationTargetWord || q.target_word || '';
+      const inputEl = this.currentDictationInput || document.getElementById('dictation-input');
+      const inlineSlot = document.getElementById('dictation-inline-slot');
+      if (inputEl) {
+        inputEl.value = targetWord;
+        inputEl.disabled = true;
+        if (inputEl.classList) inputEl.classList.add('dictation-wrong');
+      }
+      if (inlineSlot) {
+        inlineSlot.textContent = targetWord;
+        if (inlineSlot.classList) inlineSlot.classList.add('slot-filled-reveal');
+      }
     } else {
       if (q.sentence) {
         this.fillInlineBlankSlot(q, false);
@@ -4017,6 +4063,100 @@ class GameEngine {
     this.handleWrongAnswer(true);
 
     this.showFeedbackDrawer(false, q, true, retentionRate);
+  }
+
+  // Hiển thị hình ảnh minh họa với hiệu ứng zoom/chuyển động nhẹ nhàng & tô sáng viền
+  renderQuestionGifStage(q, gifConfig, explicitImgUrl = null) {
+    if (!this.vocabImageContainer || !this.vocabImg) return;
+    const cfg = gifConfig || this.resolveQuestionGifConfig(q) || {};
+    const targetSrc = explicitImgUrl || this.resolveQuestionImageUrl(q) || cfg.illustrationUrl || cfg.primarySrc;
+    if (!targetSrc) {
+      this.vocabImageContainer.style.display = 'none';
+      return;
+    }
+
+    this.activeGifConfig = {
+      ...cfg,
+      primarySrc: targetSrc,
+      reactionState: 'idle_loop'
+    };
+
+    const stateClasses = [
+      'gif-speaking-active',
+      'gif-react-correct',
+      'gif-react-wrong'
+    ];
+    if (this.vocabImageContainer.classList) {
+      stateClasses.forEach(cls => this.vocabImageContainer.classList.remove(cls));
+      this.vocabImageContainer.classList.add('gif-stage-active');
+    }
+
+    if (this.vocabImageContainer.style && typeof this.vocabImageContainer.style.setProperty === 'function') {
+      this.vocabImageContainer.style.setProperty('--gif-primary', cfg.primaryColor || '#38bdf8');
+      this.vocabImageContainer.style.setProperty('--gif-secondary', cfg.secondaryColor || '#6366f1');
+    }
+
+    if (this.vocabImg.src !== targetSrc) {
+      this.vocabImg.src = targetSrc;
+    }
+    this.vocabImg.alt = q && q.target_word ? `Minh họa từ vựng: ${q.target_word}` : 'Minh họa từ vựng';
+
+    this.vocabImageContainer.style.display = 'flex';
+  }
+
+  // Tương tác chạm vào ảnh: Phát âm chuẩn + Tô sáng viền nhẹ
+  triggerGifTapSpeak(e) {
+    const q = this.questions && this.questions[this.currentIndex];
+    if (!q || !this.vocabImageContainer) return;
+
+    this.triggerHaptic('light');
+    if (typeof soundEngine !== 'undefined' && soundEngine && typeof soundEngine.playTick === 'function') {
+      soundEngine.playTick(false);
+    }
+
+    const wordToSpeak = (q.mode === 'sentence_order' && q.targetSentence)
+      ? q.targetSentence
+      : (q.target_word || (q.options && q.options[q.correct]) || '');
+
+    if (wordToSpeak && typeof speechEngine !== 'undefined' && speechEngine && typeof speechEngine.speakWord === 'function') {
+      speechEngine.speakWord(wordToSpeak, 0.92);
+    }
+
+    if (this.activeGifConfig) {
+      this.activeGifConfig.reactionState = 'speaking_wave';
+    }
+    this.lastGifTapSpokenWord = wordToSpeak;
+
+    if (this.vocabImageContainer.classList) {
+      this.vocabImageContainer.classList.add('gif-speaking-active');
+    }
+
+    clearTimeout(this.gifSpeakTimeout);
+    this.gifSpeakTimeout = setTimeout(() => {
+      if (this.vocabImageContainer && this.vocabImageContainer.classList) {
+        this.vocabImageContainer.classList.remove('gif-speaking-active');
+      }
+      if (this.activeGifConfig && this.activeGifConfig.reactionState === 'speaking_wave') {
+        this.activeGifConfig.reactionState = 'idle_loop';
+      }
+    }, 900);
+
+    return wordToSpeak;
+  }
+
+  // Tô sáng viền ảnh (Xanh ngọc khi ĐÚNG / Đỏ san hô khi SAI)
+  triggerGifReaction(isCorrect, q) {
+    if (!this.vocabImageContainer) return;
+    const state = isCorrect ? 'correct_celebration' : 'wrong_shake';
+    if (this.activeGifConfig) {
+      this.activeGifConfig.reactionState = state;
+    }
+    this.lastGifReactionState = state;
+
+    if (this.vocabImageContainer.classList) {
+      this.vocabImageContainer.classList.remove('gif-react-correct', 'gif-react-wrong');
+      this.vocabImageContainer.classList.add(isCorrect ? 'gif-react-correct' : 'gif-react-wrong');
+    }
   }
 
   handleCorrectAnswer(timeTaken) {
@@ -4051,11 +4191,13 @@ class GameEngine {
 
     soundEngine.playCorrect(this.streak);
 
-    // PHÁT ÂM CHUẨN TỪ VỰNG KHI CHỌN ĐÚNG (TONE TRUNG - CAO, RÕ RÀNG)
     const q = this.questions[this.currentIndex];
-    const wordToSpeak = q.target_word || q.options[q.correct];
+    this.triggerGifReaction(true, q);
+
+    // PHÁT ÂM CHUẨN TỪ VỰNG KHI CHỌN ĐÚNG (TONE TRUNG - CAO, RÕ RÀNG)
+    const wordToSpeak = q ? (q.target_word || (q.options && q.options[q.correct])) : '';
     setTimeout(() => {
-      if (typeof speechEngine !== 'undefined') {
+      if (wordToSpeak && typeof speechEngine !== 'undefined') {
         speechEngine.speakWord(wordToSpeak);
       }
     }, 180);
@@ -4081,6 +4223,8 @@ class GameEngine {
     this.updateStreakUI();
 
     const q = this.questions[this.currentIndex];
+    this.triggerGifReaction(false, q);
+
     if (q) {
       if (!this.weakWordIds.includes(q.id)) {
         this.weakWordIds.push(q.id);
@@ -4106,34 +4250,307 @@ class GameEngine {
     }
   }
 
+  // Kiểm tra câu hỏi có phải là dạng Ngữ Pháp / Cấu trúc câu hay không
+  isGrammarQuestion(q) {
+    if (!q || q.isAudioQuiz || q.isDictation || q.mode === 'dictation') return false;
+    const grammarModes = ['word_class', 'preposition', 'collocation', 'sentence_cloze', 'sentence_order', 'custom_exam'];
+    if (grammarModes.includes(q.mode)) return true;
+    if (q.is_custom_exam || q.category === 'custom_exam') return true;
+    if (q.sentence && /_{2,}/.test(q.sentence)) return true;
+    return false;
+  }
+
+  getPosVietnameseName(posTag) {
+    const map = {
+      '(n)': { label: 'Danh từ (n)', short: 'Danh từ', role: 'đứng sau mạo từ (a/an/the), tính từ sở hữu hoặc tính từ' },
+      '(v)': { label: 'Động từ (v)', short: 'Động từ', role: 'đứng sau chủ ngữ, động từ khuyết thiếu (can/must/will/should) hoặc "to"' },
+      '(adj)': { label: 'Tính từ (adj)', short: 'Tính từ', role: 'đứng trước danh từ để bổ nghĩa hoặc đứng sau động từ nối (be/become/remain)' },
+      '(adv)': { label: 'Trạng từ (adv)', short: 'Trạng từ', role: 'thường có đuôi -ly, dùng để bổ nghĩa cho động từ thường hoặc tính từ' },
+      '(v-ing)': { label: 'Danh động từ (V-ing)', short: 'V-ing', role: 'đứng sau giới từ hoặc làm chủ ngữ/bổ ngữ tiếp diễn' },
+      '(v-ed)': { label: 'Phân từ (V-ed/V3)', short: 'V-ed/V3', role: 'dùng trong cấu trúc bị động (be + V-ed) hoặc hoàn thành (have/has + V-ed)' },
+      '(prep)': { label: 'Giới từ (prep)', short: 'Giới từ', role: 'đi kèm cố định sau động từ, tính từ hoặc danh từ' }
+    };
+    return map[posTag] || { label: 'Từ loại đúng', short: 'Từ đúng', role: 'phù hợp với cấu trúc ngữ pháp của câu' };
+  }
+
+  detectSuffixRule(word, posTag) {
+    const clean = String(word || '').trim().toLowerCase();
+    if (!clean) return '';
+    if (posTag === '(adv)' && /ly$/.test(clean)) {
+      return `Mẹo nhìn đuôi từ: Đuôi "-ly" là dấu hiệu đặc trưng của Trạng từ (adv).`;
+    }
+    if (posTag === '(n)') {
+      const m = clean.match(/(tion|sion|ment|ness|ity|ance|ence|ship|hood|ism|ist|ture|cy|al)$/);
+      if (m) return `Mẹo nhìn đuôi từ: Đuôi "-${m[1]}" là dấu hiệu nhận biết Danh từ (n).`;
+    }
+    if (posTag === '(adj)') {
+      const m = clean.match(/(ive|ous|ful|less|able|ible|ic|al|ent|ant)$/);
+      if (m) return `Mẹo nhìn đuôi từ: Đuôi "-${m[1]}" là dấu hiệu nhận biết Tính từ (adj).`;
+    }
+    if (posTag === '(v)') {
+      const m = clean.match(/(ize|ise|ify|ate|en)$/);
+      if (m) return `Mẹo nhìn đuôi từ: Đuôi "-${m[1]}" là dấu hiệu nhận biết Động từ (v).`;
+    }
+    return '';
+  }
+
+  // Hiệu ứng chữ chạy từng từ đơn giản, làm nổi bật các từ khóa ngữ pháp quan trọng
+  renderAnimatedGrammarWords(text, baseDelaySec = 0.04) {
+    const raw = String(text || '').trim();
+    if (!raw) return '';
+    const tokens = raw.split(/\s+/);
+    const grammarHighlightRegex = /^(Danh|Động|Tính|Trạng|Giới|Mạo|Cụm|Chủ|Tân|cố|định|nguyên|mẫu|bị|động|\(n\)|\(v\)|\(adj\)|\(adv\)|\(prep\)|V-ing|V-ed|Collocation|to-be|linking|verb|[-+]?[a-z]+)$/i;
+    return tokens.map((tok, idx) => {
+      const delay = (baseDelaySec + Math.min(idx, 28) * 0.024).toFixed(3);
+      const isQuoted = /^["“'].*["”'][,.;:!?]?$/.test(tok);
+      const isKey = isQuoted || /^\([a-z-]+\)$/i.test(tok) || /^(Danh|Động|Tính|Trạng|Giới|Collocation)/i.test(tok);
+      const cls = isKey ? 'g-anim-word g-key-term' : 'g-anim-word';
+      return `<span class="${cls}" style="--w-delay:${delay}s">${tok}</span>`;
+    }).join(' ');
+  }
+
+  // Phân tích chuyên sâu câu ngữ pháp vừa làm sai để tạo công thức + giải thích bằng hiệu ứng chữ dễ hiểu
+  buildGrammarDeepExplanation(q, userSelectedIdx = null) {
+    if (!q) return null;
+    const options = Array.isArray(q.options) ? q.options : [];
+    const correctAns = (options[q.correct] !== undefined) ? String(options[q.correct]) : String(q.target_word || '');
+    const wrongAns = (userSelectedIdx !== null && userSelectedIdx !== undefined && options[userSelectedIdx] !== undefined && userSelectedIdx !== q.correct)
+      ? String(options[userSelectedIdx])
+      : '';
+
+    const correctPos = q.mode === 'preposition' ? '(prep)' : this.getWordPOS(correctAns, q);
+    const wrongPos = wrongAns ? (q.mode === 'preposition' ? '(prep)' : this.getWordPOS(wrongAns, q)) : '';
+    const posInfo = this.getPosVietnameseName(correctPos);
+    const wrongPosInfo = wrongPos ? this.getPosVietnameseName(wrongPos) : null;
+
+    let cueBefore = '';
+    let cueAfter = '';
+    let prevWord1 = '';
+    let nextWord1 = '';
+    let highlightedRedoSentence = '';
+
+    if (q.sentence && /_{2,}/.test(q.sentence)) {
+      const parts = q.sentence.split(/_{2,}/);
+      const leftStr = (parts[0] || '').trim();
+      const rightStr = (parts.slice(1).join(' ') || '').trim();
+      const leftWords = leftStr.split(/\s+/).filter(Boolean);
+      const rightCleanWords = rightStr.replace(/^[.,;!?]+/, '').trim().split(/\s+/).filter(Boolean);
+
+      prevWord1 = leftWords[leftWords.length - 1] || '';
+      cueBefore = leftWords.slice(-2).join(' ');
+      nextWord1 = rightCleanWords[0] || '';
+      cueAfter = rightCleanWords.slice(0, 2).join(' ');
+    }
+
+    let formulaTokens = [];
+    let redoFormulaTokens = [];
+    let whyWrongText = '';
+    let ruleDetailText = '';
+    let slotShortHint = `Cần ${posInfo.label}`;
+
+    if (q.mode === 'word_class') {
+      slotShortHint = `Cần ${posInfo.label}`;
+      const beforeLabel = cueBefore ? `Sau "${cueBefore}"` : 'Vị trí chỗ trống';
+      const afterLabel = nextWord1 ? `Trước "${nextWord1}"` : `Đóng vai trò ${posInfo.short}`;
+      formulaTokens = [
+        beforeLabel,
+        `+ ${posInfo.label.toUpperCase()}`,
+        `Đáp án: "${correctAns}"`
+      ];
+      redoFormulaTokens = [
+        beforeLabel,
+        `+ ${posInfo.label.toUpperCase()}`,
+        afterLabel
+      ];
+
+      if (wrongAns) {
+        whyWrongText = `Ở lượt trước bạn chọn "${wrongAns}" ${wrongPos ? `là ${wrongPosInfo.label}` : ''}, chưa khớp cấu trúc chỗ trống.`;
+      } else {
+        whyWrongText = `Hãy nhìn các từ đứng ngay sát chỗ trống để xác định đúng từ loại.`;
+      }
+
+      const suffixTip = this.detectSuffixRule(correctAns, correctPos);
+      const baseExp = q.explanation ? q.explanation.replace(/^💡\s*/, '') : `Chỗ trống đứng ${cueBefore ? `sau "${cueBefore}"` : 'trong cụm này'} nên bắt buộc cần một ${posInfo.label} (${posInfo.role}).`;
+      ruleDetailText = `${baseExp}${suffixTip ? ` • ${suffixTip}` : ''}`;
+    } else if (q.mode === 'preposition') {
+      const anchorWord = q.target_word || prevWord1 || 'Từ khóa';
+      slotShortHint = `Đi với giới từ cố định`;
+      formulaTokens = [
+        `Từ khóa "${anchorWord}"`,
+        `+ Giới từ "${correctAns.toUpperCase()}"`,
+        `Nghĩa: "${q.vietnamese}"`
+      ];
+      redoFormulaTokens = [
+        `Từ khóa "${anchorWord}"`,
+        `+ GIỚI TỪ CỐ ĐỊNH`,
+        `Nghĩa: "${q.vietnamese}"`
+      ];
+      whyWrongText = wrongAns
+        ? `Cấu trúc "${anchorWord}" không đi với giới từ "${wrongAns}".`
+        : `Trong tiếng Anh, "${anchorWord}" luôn đi kèm một giới từ cố định.`;
+      ruleDetailText = q.explanation
+        ? `${q.explanation} (Cụm chuẩn: "${anchorWord.toLowerCase()} ${correctAns.toLowerCase()}" = ${q.vietnamese}).`
+        : `Quy tắc cố định: "${anchorWord.toLowerCase()} + ${correctAns.toLowerCase()}" mang nghĩa là "${q.vietnamese}".`;
+    } else if (q.mode === 'collocation') {
+      slotShortHint = `Cụm Collocation`;
+      const partnerCue = cueBefore || cueAfter || q.target_word || 'Ngữ cảnh';
+      formulaTokens = [
+        `Dấu hiệu "${partnerCue}"`,
+        `+ "${correctAns}"`,
+        `Cụm: "${q.vietnamese}"`
+      ];
+      redoFormulaTokens = [
+        `Kết hợp với "${partnerCue}"`,
+        `+ TỪ ĐI CÙNG (COLLOCATION)`,
+        `Nghĩa: "${q.vietnamese}"`
+      ];
+      whyWrongText = wrongAns
+        ? `Từ "${wrongAns}" không kết hợp tự nhiên với "${prevWord1 || nextWord1}" trong cụm từ học thuật này.`
+        : `Đây là cụm từ cố định (Collocation) thường đi liền với nhau trong bài thi.`;
+      ruleDetailText = q.explanation || `Ta dùng "${correctAns}" đi kèm với từ xung quanh để tạo thành cụm cố định mang nghĩa "${q.vietnamese}".`;
+    } else if (q.mode === 'sentence_order') {
+      const chunks = Array.isArray(q.wordChunks) ? q.wordChunks : [];
+      slotShortHint = `Ghép theo S ➔ V ➔ O`;
+      formulaTokens = [
+        `1. Mở đầu: "${chunks[0] || 'Chủ ngữ'}"`,
+        `2. Động từ: "${chunks[1] || 'Vị ngữ'}"`,
+        `3. Bổ ngữ: "${chunks.slice(2).join(' ')}"`
+      ];
+      redoFormulaTokens = [
+        `Mở đầu: "${chunks[0] || 'Chủ ngữ (S)'}"`,
+        `➔ Động từ / Cụm V`,
+        `➔ Tân ngữ / Bổ ngữ`
+      ];
+      whyWrongText = `Thứ tự các cụm từ ở lượt trước chưa đúng chuẩn cấu trúc câu tiếng Anh (Chủ ngữ ➔ Động từ ➔ Tân ngữ).`;
+      ruleDetailText = `Hãy bắt đầu câu bằng chủ ngữ "${chunks[0] || ''}", tiếp nối bằng cụm động từ "${chunks[1] || ''}" để diễn đạt nghĩa: “${q.vietnamese}”.`;
+    } else {
+      // sentence_cloze, custom_exam, hoặc câu ngữ pháp tổng hợp
+      slotShortHint = `Cần ${posInfo.label}`;
+      const cueLabel = cueBefore ? `Trước chỗ trống: "${cueBefore}"` : (cueAfter ? `Sau chỗ trống: "${cueAfter}"` : 'Ngữ cảnh câu');
+      formulaTokens = [
+        cueLabel,
+        `+ ${posInfo.label}: "${correctAns}"`,
+        `Nghĩa: "${q.vietnamese}"`
+      ];
+      redoFormulaTokens = [
+        cueLabel,
+        `+ ${posInfo.label.toUpperCase()}`,
+        `Nghĩa: "${q.vietnamese}"`
+      ];
+      whyWrongText = wrongAns
+        ? `Ở lượt trước bạn chọn "${wrongAns}", chưa phù hợp với dấu hiệu ngữ pháp và ngữ cảnh của câu.`
+        : `Hãy chú ý dấu hiệu ngữ pháp đứng ngay trước và sau chỗ trống.`;
+      const suffixTip = this.detectSuffixRule(correctAns, correctPos);
+      ruleDetailText = (q.explanation ? `${q.explanation}` : `Vị trí này cần ${posInfo.label} (${posInfo.role}) mang nghĩa "${q.vietnamese}".`)
+        + (suffixTip ? ` • ${suffixTip}` : '');
+    }
+
+    // Dựng câu có hiệu ứng gạch chân sáng ở các từ dấu hiệu (cue words) ngay sát chỗ trống
+    if (q.sentence && /_{2,}/.test(q.sentence)) {
+      const parts = q.sentence.split(/_{2,}/);
+      const leftStr = parts[0] || '';
+      const rightStr = parts.slice(1).join(' ') || '';
+
+      const leftHighlighted = leftStr.replace(/(\S+\s+\S+|\S+)(\s*)$/, '<span class="grammar-cue-word" title="Dấu hiệu ngữ pháp phía trước">$1</span>$2');
+      const rightHighlighted = rightStr.replace(/^(\s*[.,;!?]*\s*)(\S+)/, '$1<span class="grammar-cue-word" title="Dấu hiệu ngữ pháp phía sau">$2</span>');
+      const slotHtml = `<span class="blank-slot grammar-redo-slot">____ <small class="slot-grammar-hint">(${slotShortHint})</small></span>`;
+      highlightedRedoSentence = `${leftHighlighted}${slotHtml}${rightHighlighted}`;
+    }
+
+    return {
+      mode: q.mode,
+      correctAns,
+      wrongAns,
+      correctPos,
+      posLabel: posInfo.label,
+      cueBefore,
+      cueAfter,
+      formulaTokens,
+      redoFormulaTokens,
+      whyWrongText,
+      ruleDetailText,
+      slotShortHint,
+      highlightedRedoSentence
+    };
+  }
+
+  // Hiển thị Bảng Giải Thích Ngữ Pháp Bằng Hiệu Ứng Chữ ngay trên thẻ câu hỏi ở lượt Làm Lại (câu tiếp theo)
+  renderAdaptiveGrammarBanner(q) {
+    if (!this.adaptiveGrammarBanner) return;
+    if (!q || !q.isGrammarRedo) {
+      this.adaptiveGrammarBanner.style.display = 'none';
+      this.adaptiveGrammarBanner.innerHTML = '';
+      return;
+    }
+
+    const coach = q.grammarCoachData || this.buildGrammarDeepExplanation(q, q.lastWrongSelectedIndex);
+    if (!coach) {
+      this.adaptiveGrammarBanner.style.display = 'none';
+      return;
+    }
+    q.grammarCoachData = coach;
+
+    const tokensHtml = (coach.redoFormulaTokens || coach.formulaTokens || []).map((t, i, arr) => {
+      const stepDelay = (0.04 + i * 0.12).toFixed(2);
+      const arrow = i < arr.length - 1 ? `<span class="grammar-formula-arrow" style="--step-delay:${stepDelay}s">➔</span>` : '';
+      return `<span class="grammar-formula-pill step-${i + 1}" style="--step-delay:${stepDelay}s">${t}</span>${arrow}`;
+    }).join('');
+
+    this.adaptiveGrammarBanner.innerHTML = `
+      <div class="agb-header">
+        <span class="agb-badge">🔁 LÀM LẠI CÂU NGỮ PHÁP VỪA SAI</span>
+        <span class="agb-pos-chip">${coach.posLabel}</span>
+      </div>
+      <div class="grammar-formula-flow" aria-label="Công thức ngữ pháp">${tokensHtml}</div>
+      <div class="agb-animated-body">
+        <div class="agb-line agb-why-wrong">${this.renderAnimatedGrammarWords('⚠️ ' + coach.whyWrongText, 0.05)}</div>
+        <div class="agb-line agb-rule-detail">${this.renderAnimatedGrammarWords('💡 Quy tắc: ' + coach.ruleDetailText, 0.18)}</div>
+      </div>
+    `;
+    this.adaptiveGrammarBanner.style.display = 'block';
+  }
+
   injectRecallVariant(wrongQ) {
-    if (!wrongQ || wrongQ.isRecallVariant) return;
+    if (!wrongQ) return;
 
-    // Nếu học sinh làm sai câu hỏi trong Đề Thi AI (custom_exam):
-    // Áp dụng thuật toán Adaptive tái kiểm tra lại chính câu/kiến thức vừa sai với thứ tự đáp án đảo mới cách đó 2-3 câu
-    if (wrongQ.is_custom_exam || wrongQ.category === 'custom_exam') {
-      const baseOptions = Array.isArray(wrongQ.options) && wrongQ.options.length > 0
-        ? [...wrongQ.options]
-        : [wrongQ.target_word || 'academic', 'sustainable', 'comprehensive', 'mandatory'];
-      const correctAnsText = baseOptions[wrongQ.correct] || wrongQ.target_word || baseOptions[0];
-      const shuffledOpts = shuffleArray(baseOptions);
-      const newCorrectIdx = Math.max(0, shuffledOpts.indexOf(correctAnsText));
+    // NÂNG CẤP ADAPTIVE NGỮ PHÁP:
+    // Mỗi khi người chơi làm sai ngữ pháp, NGAY CÂU TIẾP THEO (currentIndex + 1) sẽ cho làm lại câu ngữ pháp đó
+    // kèm bảng giải thích kỹ hơn bằng hiệu ứng chữ đơn giản, dễ hiểu.
+    if (this.isGrammarQuestion(wrongQ) && !wrongQ.isGrammarRedo) {
+      const grammarCoach = this.buildGrammarDeepExplanation(wrongQ, wrongQ.lastWrongSelectedIndex);
+      wrongQ.grammarCoachData = grammarCoach;
 
-      const adaptiveExamRetry = {
+      let shuffledOpts = Array.isArray(wrongQ.options) ? [...wrongQ.options] : [];
+      let newCorrectIdx = wrongQ.correct;
+      if (shuffledOpts.length > 0 && wrongQ.correct !== undefined) {
+        const correctAnsText = shuffledOpts[wrongQ.correct] !== undefined
+          ? shuffledOpts[wrongQ.correct]
+          : (wrongQ.target_word || shuffledOpts[0]);
+        shuffledOpts = shuffleArray(shuffledOpts);
+        newCorrectIdx = Math.max(0, shuffledOpts.indexOf(correctAnsText));
+      }
+
+      const grammarRedoQ = {
         ...wrongQ,
-        id: `${wrongQ.id}_recall_${Date.now()}`,
+        id: `${wrongQ.id}_grammar_redo_${Date.now()}`,
+        baseQuestionId: wrongQ.id,
         isRecallVariant: true,
-        isAdaptiveExamRetry: true,
-        prompt: `🔁 [ADAPTIVE ÔN LẠI CÂU SAI] ${wrongQ.prompt || 'Chọn đáp án đúng cho câu trong đề:'}`,
+        isGrammarRedo: true,
+        isAdaptiveExamRetry: Boolean(wrongQ.is_custom_exam || wrongQ.category === 'custom_exam'),
+        prompt: `🔁 [LÀM LẠI NGỮ PHÁP] Áp dụng công thức bên dưới để chọn đúng:`,
         options: shuffledOpts,
-        correct: newCorrectIdx
+        correct: newCorrectIdx,
+        grammarCoachData: grammarCoach
       };
-      const insertIdx = Math.min(this.questions.length, this.currentIndex + 2);
-      this.questions.splice(insertIdx, 0, adaptiveExamRetry);
-      this.getOrPrecomputeQuestionMeta(adaptiveExamRetry);
+
+      const nextTurnIdx = Math.min(this.questions.length, this.currentIndex + 1);
+      this.questions.splice(nextTurnIdx, 0, grammarRedoQ);
+      this.getOrPrecomputeQuestionMeta(grammarRedoQ);
       this.renderSegmentedRoundBar();
       return;
     }
+
+    if (wrongQ.isRecallVariant) return;
 
     const pool = this.getFilteredBank();
     const otherWords = pool
@@ -4222,28 +4639,70 @@ class GameEngine {
         setTimeout(() => replayBtn.classList.remove('playing'), 900);
         const word = (q.mode === 'sentence_order' && q.targetSentence)
           ? q.targetSentence
-          : ((q.mode === 'voice_check' && q.lastMispronouncedWord)
-              ? q.lastMispronouncedWord
+          : ((q.mode === 'dictation' && q.dictationTargetWord)
+              ? q.dictationTargetWord
               : (q.target_word || (q.options && q.options[q.correct]) || ''));
-        if (typeof speechEngine !== 'undefined') speechEngine.speakWord(word, q.mode === 'voice_check' ? 0.84 : 0.92);
+        if (typeof speechEngine !== 'undefined') speechEngine.speakWord(word, (q.mode === 'dictation' || q.isDictation) ? 0.85 : 0.92);
       });
     }
 
+    const isGrammarWrong = !isCorrect && this.isGrammarQuestion(q);
+
     if (this.feedbackExplanation) {
-      if ((q.mode === 'voice_check' || q.isVoiceCheck) && (q.lastVoiceCoachTip || q.voiceCoachTip)) {
-        const tipStr = q.lastVoiceCoachTip || q.voiceCoachTip;
+      if (q.mode === 'dictation' || q.isDictation) {
+        const targetW = q.dictationTargetWord || q.target_word || '';
+        const shortExp = q.explanation ? ` • 💡 ${q.explanation}` : '';
         this.feedbackExplanation.textContent = isCorrect
-          ? `🎙️ Chuẩn âm tiết (${q.lastFormattedSyllables || q.voiceFormattedSyllables || q.target_word}) • ${tipStr}`
-          : `🎙️ AI Coach: ${tipStr}`;
+          ? `✍️ Chính tả chuẩn xác: "${targetW}"${shortExp}`
+          : `✍️ Đáp án chuẩn: "${targetW}" (Bạn chép: "${q.lastDictationUserText || '...'}")${shortExp}`;
       } else if ((q.category === 'custom_exam' || q.is_custom_exam) && q.explanation) {
         this.feedbackExplanation.textContent = `🤖 AI Giải thích: ${q.explanation}`;
       } else if (q.mode === 'sentence_order' && q.targetSentence) {
         const shortExp = q.explanation ? ` • 💡 ${q.explanation}` : '';
         this.feedbackExplanation.textContent = `"${q.targetSentence}"${shortExp}`;
       } else if (q.explanation) {
-        this.feedbackExplanation.textContent = `${this.getShortBandTag(q)} • 💡 ${q.explanation}`;
+        this.feedbackExplanation.textContent = `💡 ${q.explanation}`;
       } else {
-        this.feedbackExplanation.textContent = this.getShortBandTag(q);
+        this.feedbackExplanation.textContent = '';
+      }
+
+      // Ẩn hoàn toàn khối #feedback-explanation khi đã có khối Phân Tích Ngữ Pháp hoặc khi không có nội dung giải thích
+      if (isGrammarWrong || !this.feedbackExplanation.textContent) {
+        this.feedbackExplanation.style.display = 'none';
+      } else {
+        this.feedbackExplanation.style.display = 'block';
+      }
+    }
+
+    // Hiển thị hộp Giải Thích Kỹ Ngữ Pháp Bằng Hiệu Ứng Chữ (ưu tiên diện tích hiển thị rộng rãi, rõ nét)
+    if (this.feedbackGrammarCoach) {
+      if (isGrammarWrong) {
+        const coach = q.grammarCoachData || this.buildGrammarDeepExplanation(q, q.lastWrongSelectedIndex);
+        q.grammarCoachData = coach;
+        if (coach) {
+          const tokensHtml = (coach.formulaTokens || []).map((t, i, arr) => {
+            const stepDelay = (0.04 + i * 0.12).toFixed(2);
+            const arrow = i < arr.length - 1 ? `<span class="grammar-formula-arrow" style="--step-delay:${stepDelay}s">➔</span>` : '';
+            return `<span class="grammar-formula-pill step-${i + 1}" style="--step-delay:${stepDelay}s">${t}</span>${arrow}`;
+          }).join('');
+          this.feedbackGrammarCoach.innerHTML = `
+            <div class="fgc-top-row">
+              <span class="fgc-title">📐 PHÂN TÍCH NGỮ PHÁP DỄ HIỂU</span>
+              <span class="fgc-next-badge">🔁 Câu sau làm lại ngay</span>
+            </div>
+            <div class="grammar-formula-flow">${tokensHtml}</div>
+            <div class="fgc-animated-lines">
+              <div class="fgc-line">${this.renderAnimatedGrammarWords(coach.whyWrongText, 0.04)}</div>
+              <div class="fgc-line fgc-rule">${this.renderAnimatedGrammarWords('💡 ' + coach.ruleDetailText, 0.16)}</div>
+            </div>
+          `;
+          this.feedbackGrammarCoach.style.display = 'block';
+        } else {
+          this.feedbackGrammarCoach.style.display = 'none';
+        }
+      } else {
+        this.feedbackGrammarCoach.style.display = 'none';
+        this.feedbackGrammarCoach.innerHTML = '';
       }
     }
 
@@ -4366,6 +4825,20 @@ class GameEngine {
       return;
     }
 
+    if (q.mode === 'dictation' || q.isDictation) {
+      const targetWord = String(q.dictationTargetWord || q.dictationTarget || q.target_word || '').toLowerCase();
+      const inputEl = this.currentDictationInput || document.getElementById('dictation-input');
+      if (inputEl && targetWord) {
+        const halfLen = Math.max(2, Math.floor(targetWord.length / 2));
+        inputEl.value = targetWord.slice(0, Math.min(targetWord.length - 1, halfLen));
+        if (typeof this.syncDictationUI === 'function') {
+          this.syncDictationUI();
+        }
+      }
+      this.flashDynamicIsland('⚡ 50:50 ĐÃ ĐIỀN NỬA ĐẦU TỪ VỰNG');
+      return;
+    }
+
     const wrongIndices = [0, 1, 2, 3].filter(idx => idx !== q.correct);
     const shuffledWrong = shuffleArray(wrongIndices).slice(0, 2);
 
@@ -4405,6 +4878,14 @@ class GameEngine {
         this.questionMainText.innerHTML = `<span class="sentence-order-meaning-cue">💡 Mở đầu câu: <strong class="sentence-hint-target">“${firstTwo} ...”</strong> (${q.vietnamese})</span>`;
       }
       this.flashDynamicIsland(`💡 GỢI Ý MỞ ĐẦU: "${firstTwo}..."`);
+      return;
+    }
+    if (q && (q.mode === 'dictation' || q.isDictation)) {
+      const hintBtn = document.getElementById('btn-dictation-hint-char');
+      if (hintBtn && hintBtn.click) {
+        hintBtn.click();
+      }
+      this.flashDynamicIsland(`💡 ĐÃ GỢI Ý CHỮ CÁI TIẾP THEO`);
       return;
     }
     this.flashDynamicIsland(`💡 GỢI Ý: ${q.vietnamese.slice(0, 32)}...`);
@@ -4608,11 +5089,16 @@ ${emojiBlocks}
     }
   }
 
-  toggleVoiceCheckMode() {
-    if (this.currentGradeFilter === 'voice_check') {
+  toggleDictationMode() {
+    if (this.currentGradeFilter === 'dictation') {
       this.setGradeFilter('all');
     } else {
-      this.setGradeFilter('voice_check');
+      if (['g6', 'g7', 'g8', 'g9', 'g10', 'g11', 'g12', 'toeic', 'band7'].includes(this.currentGradeFilter)) {
+        this.audioGradeFilter = this.currentGradeFilter;
+        this.saveAudioGradeFilter();
+      }
+      this.updateAudioGradeFilterUI();
+      this.setGradeFilter('dictation');
     }
   }
 
@@ -4638,8 +5124,9 @@ ${emojiBlocks}
   }
 
   setGradeFilter(filterKey) {
-    this.currentGradeFilter = filterKey;
-    localStorage.setItem('ielts_grade_filter', filterKey);
+    const normalizedFilter = filterKey === 'voice_check' ? 'dictation' : filterKey;
+    this.currentGradeFilter = normalizedFilter;
+    localStorage.setItem('ielts_grade_filter', normalizedFilter);
     this.usedQuestionIds.clear(); // Reset question rotation on filter switch
     this.updateGradeFilterUI();
     this.updateAudioGradeFilterUI();
@@ -4653,31 +5140,31 @@ ${emojiBlocks}
   updateGradeFilterUI() {
     const audioGradeNames = {
       all: '',
-      g6: ' • Lớp 6',
-      g7: ' • Lớp 7',
-      g8: ' • Lớp 8',
-      g9: ' • Lớp 9',
-      g10: ' • Lớp 10',
-      g11: ' • Lớp 11',
-      g12: ' • Lớp 12',
-      toeic: ' • TOEIC',
-      band7: ' • Band 7+'
+      g6: ' L6',
+      g7: ' L7',
+      g8: ' L8',
+      g9: ' L9',
+      g10: ' L10',
+      g11: ' L11',
+      g12: ' L12',
+      toeic: ' TOEIC',
+      band7: ' B7+'
     };
     const audioSubSuffix = audioGradeNames[this.audioGradeFilter || 'all'] || '';
     const filterLabels = {
       all: 'Adaptive',
-      sentence_order: '🧩 Xếp câu',
-      audio: `🎧 Nghe AI${audioSubSuffix}`,
-      voice_check: '🎙️ Phát âm',
-      weak: '🔥 Từ Yếu',
-      custom_exam: '📄 Tạo câu hỏi từ đề thi',
-      part5_speed: '⚡ Part 5 Speed',
-      toeic: 'TOEIC 400-700',
+      sentence_order: 'Xếp câu',
+      audio: `Nghe${audioSubSuffix}`,
+      dictation: `Chép từ${audioSubSuffix}`,
+      weak: 'Từ Yếu',
+      custom_exam: 'Đề AI',
+      part5_speed: 'Part 5',
+      toeic: 'TOEIC',
       toeic400: 'TOEIC 400+',
       toeic500: 'TOEIC 500+',
       toeic600: 'TOEIC 600+',
       toeic700: 'TOEIC 700+',
-      ielts: 'IELTS 6-12',
+      ielts: 'IELTS',
       g6: 'Lớp 6',
       g7: 'Lớp 7',
       g8: 'Lớp 8',
@@ -4692,7 +5179,7 @@ ${emojiBlocks}
     }
     const isMiniGameActive = this.currentGradeFilter === 'sentence_order'
       || this.currentGradeFilter === 'audio'
-      || this.currentGradeFilter === 'voice_check';
+      || this.currentGradeFilter === 'dictation';
     if (this.btnMiniGamesToggle && this.btnMiniGamesToggle.classList) {
       this.btnMiniGamesToggle.classList.toggle('active-mode', isMiniGameActive);
     }
@@ -4702,8 +5189,8 @@ ${emojiBlocks}
     if (this.btnAudioQuizMode && this.btnAudioQuizMode.classList) {
       this.btnAudioQuizMode.classList.toggle('active-mode', this.currentGradeFilter === 'audio');
     }
-    if (this.btnVoiceCheckMode && this.btnVoiceCheckMode.classList) {
-      this.btnVoiceCheckMode.classList.toggle('active-mode', this.currentGradeFilter === 'voice_check');
+    if (this.btnDictationMode && this.btnDictationMode.classList) {
+      this.btnDictationMode.classList.toggle('active-mode', this.currentGradeFilter === 'dictation');
     }
     if (this.btnExamImport && this.btnExamImport.classList) {
       this.btnExamImport.classList.toggle('active-mode', this.currentGradeFilter === 'custom_exam');

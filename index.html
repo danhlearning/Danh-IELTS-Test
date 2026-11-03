@@ -84,8 +84,8 @@
                 </div>
               </div>
 
-              <!-- Huy hiệu Chuỗi Ngày Học & Nhiệm Vụ Ngày (Bấm để mở bảng Nhiệm vụ & nhận thưởng XP) -->
-              <button type="button" class="streak-quest-header-btn" id="btn-daily-streak-header" title="Nhiệm vụ hàng ngày & Chuỗi ngày học">
+              <!-- Huy hiệu Chuỗi Ngày Học & Nhiệm Vụ Ngày (Đã ẩn trên thanh頂 để không che các nút khác, dùng pill ở hàng dưới) -->
+              <button type="button" class="streak-quest-header-btn" id="btn-daily-streak-header" title="Nhiệm vụ hàng ngày & Chuỗi ngày học" style="display: none;">
                 <span class="sq-fire-icon">🔥</span>
                 <span class="sq-streak-num" id="header-streak-days">1</span>
                 <span class="sq-quest-dot" id="header-quest-notify-dot" style="display: none;"></span>
@@ -106,9 +106,9 @@
                   <span id="current-filter-pill-label">Adaptive</span>
                 </button>
 
-                <!-- Ô Chọn Game: Gom Sắp xếp câu, Luyện nghe & Luyện phát âm vào 1 mục biểu tượng 🧩 -->
+                <!-- Ô Chọn Game: Gom Sắp xếp câu, Luyện nghe & Chép chính tả vào 1 mục biểu tượng 🧩 -->
                 <div class="mini-games-menu-wrapper" id="mini-games-menu-wrapper">
-                  <button type="button" class="icon-btn mini-games-trigger-btn" id="btn-mini-games-toggle" title="Kho Trò Chơi: Sắp xếp câu, Luyện nghe & Luyện phát âm" aria-expanded="false">
+                  <button type="button" class="icon-btn mini-games-trigger-btn" id="btn-mini-games-toggle" title="Kho Trò Chơi: Sắp xếp câu, Luyện nghe & Chép chính tả" aria-expanded="false">
                     <span class="g-icon mini-game-puzzle-icon">🧩</span>
                   </button>
 
@@ -124,9 +124,9 @@
                       <span class="settings-item-text">Luyện nghe</span>
                     </button>
 
-                    <button type="button" class="settings-menu-item mini-game-item" id="btn-voice-check-mode" title="Game Luyện Phát Âm Chấm Điểm Qua Giọng Nói (Voice Check)">
-                      <span class="settings-item-icon">🎙️</span>
-                      <span class="settings-item-text">Luyện phát âm</span>
+                    <button type="button" class="settings-menu-item mini-game-item" id="btn-dictation-mode" title="Game Nghe Chép Chính Tả (Listening Dictation)">
+                      <span class="settings-item-icon">✍️</span>
+                      <span class="settings-item-text">Chép chính tả</span>
                     </button>
                   </div>
                 </div>
@@ -228,9 +228,12 @@
 
             <p class="prompt-text" id="prompt-text">Điền các chữ cái còn thiếu vào từ vựng:</p>
 
-            <!-- Vùng hình ảnh minh họa từ vựng bút chì (Pencil Art từ Danh_English_Tutor) -->
+            <!-- Bảng Giải Thích Ngữ Pháp Chuyên Sâu Bằng Hiệu Ứng Chữ (Hiện ở câu Làm Lại Ngữ Pháp ngay sau khi làm sai) -->
+            <div class="adaptive-grammar-banner" id="adaptive-grammar-banner" style="display: none;" aria-live="polite"></div>
+
+            <!-- Vùng hình ảnh minh họa từ vựng (Hiệu ứng zoom chuyển động nhẹ & tô sáng viền) -->
             <div class="vocab-image-container" id="vocab-image" style="display: none;">
-              <img id="vocab-img" src="" alt="Minh họa từ vựng" decoding="async">
+              <img id="vocab-img" src="" alt="Minh họa từ vựng" decoding="async" referrerpolicy="no-referrer">
             </div>
 
             <!-- Ô chữ cái nổi 3D Liquid Crystal (cho chế độ Điền chữ cái) -->
@@ -238,31 +241,46 @@
               <!-- Dynamic Letter Boxes -->
             </div>
 
-            <!-- Bảng Điều Khiển Sóng Âm Chế Độ Nghe Phát Âm (Audio Listening Quiz + Phân Loại Theo Lớp) -->
+            <!-- Bảng Điều Khiển Sóng Âm Gọn 1 Hàng (Gom Chọn Lớp + Nghe Chuẩn + Nghe Chậm 0.7x) -->
             <div class="audio-quiz-panel" id="audio-quiz-panel" style="display: none;">
-              <div class="audio-grade-filter-bar" id="audio-grade-filter-bar" role="tablist" aria-label="Phân loại luyện nghe theo lớp">
-                <button type="button" class="audio-grade-chip active" data-audio-grade="all">Tất cả</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g6">Lớp 6</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g7">Lớp 7</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g8">Lớp 8</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g9">Lớp 9</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g10">Lớp 10</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g11">Lớp 11</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="g12">Lớp 12</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="toeic">TOEIC</button>
-                <button type="button" class="audio-grade-chip" data-audio-grade="band7">IELTS 7+</button>
-              </div>
-              <div class="audio-wave-bars" id="audio-wave-bars">
-                <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-              </div>
-              <div class="audio-quiz-controls">
-                <button type="button" class="btn-audio-quiz-main" id="btn-audio-quiz-play" title="Nghe phát âm chuẩn (0.92x)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.2"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-                  <span>Nghe chuẩn</span>
-                </button>
-                <button type="button" class="btn-audio-quiz-slow" id="btn-audio-quiz-slow" title="Nghe phát âm chậm rõ từng âm (0.68x)">
-                  <span>🐢 Chậm 0.7x</span>
-                </button>
+              <div class="audio-compact-toolbar">
+                <!-- Nút Gom Nhóm Chọn Lớp Gọn Gàng (Bấm để mở lưới chọn Lớp 6-12, TOEIC, IELTS) -->
+                <div class="audio-grade-dropdown-wrap" id="audio-grade-dropdown-wrap">
+                  <button type="button" class="btn-audio-grade-picker" id="btn-audio-grade-picker" title="Chọn Lớp / Cấp độ luyện nghe" aria-expanded="false">
+                    <span class="agp-icon">🎓</span>
+                    <span class="agp-label" id="audio-grade-current-label">Tất cả</span>
+                    <span class="agp-caret">▾</span>
+                  </button>
+
+                  <div class="audio-grade-filter-bar" id="audio-grade-filter-bar" role="tablist" aria-label="Phân loại luyện nghe theo lớp">
+                    <button type="button" class="audio-grade-chip active" data-audio-grade="all">Tất cả</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g6">Lớp 6</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g7">Lớp 7</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g8">Lớp 8</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g9">Lớp 9</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g10">Lớp 10</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g11">Lớp 11</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="g12">Lớp 12</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="toeic">TOEIC</button>
+                    <button type="button" class="audio-grade-chip" data-audio-grade="band7">IELTS 7+</button>
+                  </div>
+                </div>
+
+                <!-- Sóng âm thu gọn nằm ngay trên thanh điều khiển -->
+                <div class="audio-wave-bars" id="audio-wave-bars">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+
+                <!-- Nút Nghe Chuẩn & Nghe Chậm 0.7x cùng hàng -->
+                <div class="audio-quiz-controls">
+                  <button type="button" class="btn-audio-quiz-main" id="btn-audio-quiz-play" title="Nghe phát âm chuẩn (0.92x)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.2"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                    <span>Nghe chuẩn</span>
+                  </button>
+                  <button type="button" class="btn-audio-quiz-slow" id="btn-audio-quiz-slow" title="Nghe phát âm chậm rõ từng âm (0.68x)">
+                    <span>🐢 0.7x</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -318,9 +336,10 @@
           <div class="feedback-vietnamese" id="feedback-vietnamese">tàn phá, hủy hoại</div>
           
           <!-- Giải thích ngắn gọn, súc tích, dễ hiểu -->
-          <p class="feedback-explanation" id="feedback-explanation">
-            TOEIC 400-450
-          </p>
+          <p class="feedback-explanation" id="feedback-explanation" style="display: none;"></p>
+
+          <!-- Hộp Giải Thích Kỹ Ngữ Pháp Bằng Hiệu Ứng Chữ Đơn Giản Dễ Hiểu (Khi làm sai ngữ pháp) -->
+          <div class="feedback-grammar-coach" id="feedback-grammar-coach" style="display: none;" aria-live="polite"></div>
 
           <!-- Hộp Phân Biệt Cặp Từ Dễ Nhầm & Cảnh Báo Bẫy Phòng Thi -->
           <div class="feedback-confusable-box" id="feedback-confusable-box" style="display: none;"></div>
@@ -437,12 +456,12 @@
                 <span class="g-badge">Audio AI</span>
               </button>
 
-              <button class="grade-option-btn" data-filter="voice_check">
+              <button class="grade-option-btn" data-filter="dictation">
                 <div class="g-info">
-                  <span class="g-title">🎙️ Luyện Phát Âm Chấm Điểm Giọng Nói (Voice Check)</span>
-                  <span class="g-desc">Đọc to từ vựng & cụm câu ngắn qua Mic để AI chấm độ chuẩn phát âm % trực tiếp</span>
+                  <span class="g-title">✍️ Nghe Chép Chính Tả (Listening Dictation • 30s)</span>
+                  <span class="g-desc">Nghe phát âm chuẩn &amp; chậm 0.7x kết hợp gõ hoặc chạm chữ cái để chép lại đúng chính tả từ vựng</span>
                 </div>
-                <span class="g-badge">Mới 🎙️</span>
+                <span class="g-badge">Mới ✍️</span>
               </button>
 
               <button class="grade-option-btn" data-filter="weak">
@@ -519,75 +538,41 @@
                 <span class="g-badge">161 câu</span>
               </button>
               
-              <div class="grade-category-divider">KHỐI TRUNG HỌC CƠ SỞ (THCS)</div>
-              
-              <button class="grade-option-btn" data-filter="g6">
-                <div class="g-info">
-                  <span class="g-title">🎒 Tiếng Anh Lớp 6 • Band 5.0</span>
-                  <span class="g-desc">Trường học, Nhà cửa, Bạn bè, Thế giới xanh, Người máy</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <button class="grade-option-btn" data-filter="g7">
-                <div class="g-info">
-                  <span class="g-title">🎨 Tiếng Anh Lớp 7 • Band 5.0 - 5.5</span>
-                  <span class="g-desc">Sở thích, Sống khỏe, Phục vụ cộng đồng, Năng lượng, Giao thông</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <button class="grade-option-btn" data-filter="g8">
-                <div class="g-info">
-                  <span class="g-title">🏕️ Tiếng Anh Lớp 8 • Band 5.5 - 6.0</span>
-                  <span class="g-desc">Thanh thiếu niên, Dân tộc, Phong tục tập quán, Thiên tai, Khoa học</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <button class="grade-option-btn" data-filter="g9">
-                <div class="g-info">
-                  <span class="g-title">🏙️ Tiếng Anh Lớp 9 • Band 6.0 - 6.5</span>
-                  <span class="g-desc">Làng nghề, Cuộc sống thành thị, Di sản quá khứ, Quản lý thời gian</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <div class="grade-category-divider">KHỐI TRUNG HỌC PHỔ THÔNG (THPT) & IELTS</div>
-
-              <button class="grade-option-btn" data-filter="g10">
-                <div class="g-info">
-                  <span class="g-title">🌿 Tiếng Anh Lớp 10 • Band 6.5 - 7.0</span>
-                  <span class="g-desc">Gia đình & Bình đẳng giới, Bảo vệ sinh thái, Dấu chân carbon, Du lịch sinh thái</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <button class="grade-option-btn" data-filter="g11">
-                <div class="g-info">
-                  <span class="g-title">⚡ Tiếng Anh Lớp 11 • Band 7.0</span>
-                  <span class="g-desc">Sống thọ, Đô thị thông minh, Hiệu ứng nhà kính, Tự chủ độc lập</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <button class="grade-option-btn" data-filter="g12">
-                <div class="g-info">
-                  <span class="g-title">🏆 Tiếng Anh Lớp 12 • Band 7.0 - 7.5</span>
-                  <span class="g-desc">Kiên cường, Đa văn hóa, Đô thị hóa, Trí tuệ nhân tạo (AI), Tuyệt chủng sinh vật</span>
-                </div>
-                <span class="g-badge">18 câu</span>
-              </button>
-
-              <div class="grade-category-divider">CHUYÊN ĐỀ MỤC TIÊU BAND ĐIỂM</div>
-
-              <button class="grade-option-btn" data-filter="band7">
-                <div class="g-info">
-                  <span class="g-title">🎯 Bứt Phá Điểm Band 7.0 - 7.5</span>
-                  <span class="g-desc">Tập trung toàn bộ từ vựng học thuật đỉnh cao phục vụ Writing Task 2 & Speaking</span>
-                </div>
-                <span class="g-badge">41 câu</span>
-              </button>
+              <div class="grade-category-divider">KHỐI PHỔ THÔNG (LỚP 6 - 12) &amp; MỤC TIÊU BAND</div>
+              <div class="grade-compact-grid">
+                <button class="grade-option-btn grade-compact-pill" data-filter="g6">
+                  <span class="g-title">🎒 Lớp 6</span>
+                  <span class="g-badge">Band 5.0</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="g7">
+                  <span class="g-title">🎨 Lớp 7</span>
+                  <span class="g-badge">Band 5.5</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="g8">
+                  <span class="g-title">🏕️ Lớp 8</span>
+                  <span class="g-badge">Band 6.0</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="g9">
+                  <span class="g-title">🏙️ Lớp 9</span>
+                  <span class="g-badge">Band 6.5</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="g10">
+                  <span class="g-title">🌿 Lớp 10</span>
+                  <span class="g-badge">Band 7.0</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="g11">
+                  <span class="g-title">⚡ Lớp 11</span>
+                  <span class="g-badge">Band 7.0</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="g12">
+                  <span class="g-title">🏆 Lớp 12</span>
+                  <span class="g-badge">Band 7.5</span>
+                </button>
+                <button class="grade-option-btn grade-compact-pill" data-filter="band7">
+                  <span class="g-title">🎯 Band 7.0+</span>
+                  <span class="g-badge">41 câu</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

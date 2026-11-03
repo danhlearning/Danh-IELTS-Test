@@ -147,10 +147,12 @@ global.sessionStorage = new LocalStorageMock();
 
 // Load code files
 const dataCode = fs.readFileSync(path.join(__dirname, 'data.js'), 'utf8');
+const vocabImagesCode = fs.readFileSync(path.join(__dirname, 'vocab-images.js'), 'utf8');
 const soundCode = fs.readFileSync(path.join(__dirname, 'sound.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 
 vm.runInThisContext(dataCode);
+vm.runInThisContext(vocabImagesCode);
 vm.runInThisContext(soundCode);
 vm.runInThisContext(appCode);
 
@@ -431,28 +433,28 @@ assert(engine.lastHapticStyle === 'error', "Trả lời SAI kích hoạt Haptic 
 assert(vibrateCalls.length > 0 && JSON.stringify(vibrateCalls[vibrateCalls.length - 1]) === JSON.stringify([65, 45, 95]), `Browser navigator.vibrate() được gọi với nhịp rung cảnh báo sai: [${vibrateCalls[vibrateCalls.length - 1]}]`);
 
 // ====================================================================
-// TEST SUITE 7: VOICE CHECK (LUYỆN PHÁT ÂM CHẤM ĐIỂM QUA GIỌNG NÓI)
+// TEST SUITE 7: NGHE CHÉP CHÍNH TẢ (LISTENING DICTATION MINI-GAME)
 // ====================================================================
-console.log("\n🎙️ TEST SUITE 7: Mini-Game Luyện Phát Âm Chấm Điểm Giọng Nói (Voice Check)");
+console.log("\n✍️ TEST SUITE 7: Mini-Game Nghe Chép Chính Tả (Listening Dictation)");
 
-engine.setGradeFilter('voice_check');
-assert(engine.currentGradeFilter === 'voice_check', "Chuyển sang chế độ 'voice_check' trong Kho Trò Chơi 🧩 thành công");
-assert(engine.activeRoundTimeLimit === 30.0 && engine.remainingTime === 30.0, `Thời gian chơi game Luyện phát âm là 30.0 giây (Thực tế: ${engine.remainingTime}s)`);
-assert(engine.questions.length === 10 && engine.questions.every(q => q.mode === 'voice_check' && q.isVoiceCheck), "Tất cả 10 câu trong ván được chuyển thành thử thách Luyện phát âm (voice_check)");
+engine.setGradeFilter('dictation');
+assert(engine.currentGradeFilter === 'dictation', "Chuyển sang chế độ 'dictation' (Nghe chép chính tả) trong Kho Trò Chơi 🧩 thành công");
+assert(engine.activeRoundTimeLimit === 30.0 && engine.remainingTime === 30.0, `Thời gian chơi game Nghe chép chính tả là 30.0 giây (Thực tế: ${engine.remainingTime}s)`);
+assert(engine.questions.length === 10 && engine.questions.every(q => q.mode === 'dictation' && q.isDictation), "Tất cả 10 câu trong ván được chuyển thành thử thách Nghe chép chính tả (dictation)");
 
-const vcQuestion = engine.questions[0];
-const voiceTokens = engine.letterBoxContainer.querySelectorAll('.voice-word-token');
-assert(voiceTokens.length === vcQuestion.voiceTokens.length, `Hiển thị đúng ${voiceTokens.length} từ trong khay cụm từ luyện đọc`);
+const dictQuestion = engine.questions[0];
+const inlineSlot = engine.questionMainText.querySelector('#dictation-inline-slot') || engine.currentDictationInlineSlot;
+const dictInput = engine.answersContainer.querySelector('#dictation-input');
+const dictSubmitBtn = engine.answersContainer.querySelector('#btn-dictation-submit');
+const dictLetterChips = engine.answersContainer.querySelectorAll('.dictation-letter-chip');
+assert(Boolean(inlineSlot && dictInput && dictSubmitBtn), "Hiển thị đầy đủ ô trống trong câu (#dictation-inline-slot), ô nhập chính tả (#dictation-input) và nút Chấm (#btn-dictation-submit)");
+assert(dictLetterChips.length === dictQuestion.dictationLetters.length, `Hiển thị đầy đủ ${dictLetterChips.length} phím chữ cái gợi ý chạm nhanh trên điện thoại/máy tính bảng`);
 
-const micRecordBtn = engine.answersContainer.querySelector('#btn-voice-record');
-const simSpeakBtn = engine.answersContainer.querySelector('#btn-voice-sim-speak');
-assert(Boolean(micRecordBtn && simSpeakBtn), "Hiển thị đầy đủ nút Micro thu âm 🎙️ và nút Đọc chuẩn mẫu ✨");
-
-const scoreBeforeVC = engine.score;
-const evalRes = engine.evaluateVoicePronunciation(vcQuestion, vcQuestion.voicePhrase);
-assert(evalRes && evalRes.isCorrect === true && evalRes.accuracyPct >= 90, `Chấm điểm giọng đọc chuẩn xác đạt ${evalRes ? evalRes.accuracyPct : 0}% (≥ 65% qua màn)`);
-assert(engine.score > scoreBeforeVC, `Phát âm chuẩn được cộng điểm thưởng XP (${engine.score} XP)`);
-assert(voiceTokens.every(t => t.classList.contains('spoken-match')), "Tất cả các từ trong câu phát sáng màu xanh lá (.spoken-match) khi đọc chuẩn");
+const scoreBeforeDict = engine.score;
+const evalRes = engine.evaluateDictation(dictQuestion, dictQuestion.dictationTarget);
+assert(evalRes && evalRes.isCorrect === true, `Chấm điểm Nghe chép chính tả chính xác tuyệt đối với từ "${dictQuestion.dictationTarget}"`);
+assert(engine.score > scoreBeforeDict, `Chép chính tả đúng được cộng điểm thưởng XP (${engine.score} XP)`);
+assert(inlineSlot.classList.contains('slot-correct'), "Ô trống trong câu phát sáng màu xanh lá (.slot-correct) khi chép đúng chính tả");
 
 // ====================================================================
 // TEST SUITE 8: DAILY QUESTS & STREAK SYSTEM (NHIỆM VỤ HÀNG NGÀY & CHUỖI NGÀY HỌC)
@@ -471,8 +473,8 @@ const minigameQuest = engine.dailyTracker.quests.find(q => q.id === 'quest_minig
 minigameQuest.progress = 2;
 minigameQuest.claimed = false;
 engine.nextQuestion();
-const vcQuestion2 = engine.questions[engine.currentIndex];
-engine.evaluateVoicePronunciation(vcQuestion2, vcQuestion2.voicePhrase);
+const dictQuestion2 = engine.questions[engine.currentIndex];
+engine.evaluateDictation(dictQuestion2, dictQuestion2.dictationTarget);
 
 assert(minigameQuest.progress >= 3, `Tiến độ nhiệm vụ Kho Game tự động tăng lên ${minigameQuest.progress}/${minigameQuest.target}`);
 
@@ -543,32 +545,31 @@ assert(indexHtmlContent.includes('id="btn-run-exam-convert"') && indexHtmlConten
 assert(indexHtmlContent.includes('id="audio-grade-filter-bar"'), "Giao diện Luyện Nghe có thanh chọn phân loại theo Lớp (#audio-grade-filter-bar)");
 
 // ====================================================================
-// TEST SUITE 10: AI PHONETIC COACH (CHẤM PHÁT ÂM CHI TIẾT ĐẾN TỪNG ÂM TIẾT)
+// TEST SUITE 10: DICTATION CHAR DIFF, SLOW REPLAY ON MISTAKE & GRADE FILTER
 // ====================================================================
-console.log("\n🎙️ TEST SUITE 10: AI Phonetic Coach (Tách Âm Tiết, Trọng Âm 1 Dòng, Rung & Phát Lại Từ Sai)");
+console.log("\n✍️ TEST SUITE 10: Nghe Chép Chính Tả Chi Tiết (So Khớp Ký Tự, Phát Chậm Khi Sai & Phân Loại Lớp)");
 
-const susCoach = engine.analyzeWordSyllablesAndTip('sustainable', '/səˈsteɪnəbl/');
-assert(
-  susCoach.formattedSyllables === 'sus-TAIN-a-ble' && susCoach.stressIndex === 1 && susCoach.oneLineCoachTip.includes('Nhấn mạnh âm tiết thứ 2: sus-TAIN-a-ble'),
-  `Phân tích chuẩn âm tiết & trọng âm: "${susCoach.oneLineCoachTip}"`
-);
+assert(!indexHtmlContent.includes('id="btn-voice-check-mode"') && indexHtmlContent.includes('id="btn-dictation-mode"'), "Đã loại bỏ hoàn toàn nút Luyện phát âm dễ lỗi và thay bằng nút Chép chính tả (#btn-dictation-mode) trong Kho Trò Chơi");
 
-const cachedCoachRaw = JSON.parse(localStorage.getItem('ielts_phonetic_coach_cache_v1') || '{}');
-assert(Boolean(cachedCoachRaw.sustainable && cachedCoachRaw.sustainable.formattedSyllables === 'sus-TAIN-a-ble'), "Lưu bộ nhớ đệm AI Phonetic Coach vào LocalStorage (ielts_phonetic_coach_cache_v1) để phản hồi 0ms");
+engine.setGradeFilter('dictation');
+engine.setAudioGradeFilter('g9');
+assert(engine.currentGradeFilter === 'dictation' && engine.questions.every(q => q.isDictation && q.grade === 9), "Nghe chép chính tả hỗ trợ lọc câu hỏi theo từng Lớp (ví dụ: Lớp 9)");
 
-// Chuyển sang game Luyện phát âm (voice_check) và kiểm tra khi đọc sai từ khóa
-engine.setGradeFilter('voice_check');
-const vcCoachQ = engine.questions[0];
-vcCoachQ.voiceTargetWord = 'sustainable';
-vcCoachQ.target_word = 'sustainable';
-vcCoachQ.voicePhrase = 'This is a sustainable solution';
-vcCoachQ.voiceTokens = ['This', 'is', 'a', 'sustainable', 'solution'];
+const dictCoachQ = engine.questions[0];
+dictCoachQ.dictationTarget = 'sustainable';
+dictCoachQ.dictationTargetWord = 'sustainable';
+dictCoachQ.target_word = 'sustainable';
+dictCoachQ.dictationLetters = ['S', 'U', 'S', 'T', 'A', 'I', 'N', 'A', 'B', 'L', 'E'];
+dictCoachQ.dictationScrambledLetters = ['S', 'U', 'S', 'T', 'A', 'I', 'N', 'A', 'B', 'L', 'E'];
 engine.loadQuestion(0);
 
-const syllableChips = engine.answersContainer.querySelectorAll('.voice-syllable-chip');
-assert(syllableChips.length === 4 && syllableChips[1].classList.contains('stressed-syllable') && syllableChips[1].textContent === 'TAIN', "Hiển thị trực quan dải âm tiết 'sus • TAIN • a • ble' với âm tiết nhấn trọng âm nổi bật");
+// Kiểm tra chạm phím chữ cái gợi ý và trợ giúp 50:50 điền nửa đầu từ
+engine.powerups.fiftyFifty = true;
+engine.useFiftyFifty();
+const currentTypedAfter5050 = engine.dictationState.typedValue;
+assert(currentTypedAfter5050 === 'susta', `Trợ giúp 50:50 trong Nghe chép chính tả tự động điền nửa đầu từ khóa: "${currentTypedAfter5050}"`);
 
-// Theo dõi lệnh phát lại từ bị đọc lệch qua speechEngine.speakWord
+// Theo dõi lệnh phát lại từ bị viết sai qua speechEngine.speakWord
 const spokenReplayCalls = [];
 const origSpeakWord = speechEngine.speakWord.bind(speechEngine);
 speechEngine.speakWord = (word, rate) => {
@@ -577,21 +578,78 @@ speechEngine.speakWord = (word, rate) => {
 };
 
 vibrateCalls.length = 0;
-const misEval = engine.evaluateVoicePronunciation(vcCoachQ, 'This is a wrongsound solution');
+const misDictEval = engine.evaluateDictation(dictCoachQ, 'sustanable');
+assert(misDictEval.isCorrect === false && misDictEval.target === 'sustainable', "Phát hiện chính xác lỗi viết sai chính tả ('sustanable' vs 'sustainable')");
+assert(engine.lastHapticStyle === 'error' && vibrateCalls.length > 0, `Kích hoạt phản hồi rung cảnh báo khi chép sai chính tả: [${vibrateCalls[vibrateCalls.length - 1]}]`);
+assert(spokenReplayCalls.some(c => c.word === 'sustainable' && c.rate === 0.72), "Tự động phát âm chậm lại từ đúng ('sustainable' ở tốc độ 0.72x) khi học sinh chép sai");
+const slotAfterErr = engine.questionMainText.querySelector('#dictation-inline-slot') || engine.currentDictationInlineSlot;
+assert(slotAfterErr && slotAfterErr.innerHTML.includes('dict-char-ok') && slotAfterErr.innerHTML.includes('dict-char-err'), "Hiển thị phân tích từng ký tự đúng (.dict-char-ok) và sai (.dict-char-err) trực quan trên câu");
 
-assert(misEval.isCorrect === false && misEval.mispronouncedWord === 'sustainable', `AI phát hiện chính xác từ bị đọc lệch là "${misEval.mispronouncedWord}"`);
-assert(engine.lastHapticStyle === 'error' && vibrateCalls.length > 0, `Kích hoạt phản hồi rung cảnh báo khi đọc lệch âm tiết: [${vibrateCalls[vibrateCalls.length - 1]}]`);
-assert(spokenReplayCalls.some(c => c.word === 'sustainable'), `Tự động phát lại đúng từ bị đọc lệch ("sustainable") ở tốc độ chậm rõ âm tiết`);
-assert(
-  engine.feedbackExplanation.textContent.includes('🎙️ AI Coach: Nhấn mạnh âm tiết thứ 2: sus-TAIN-a-ble'),
-  `Hiển thị chỉ dẫn 1 dòng cách đặt lưỡi & trọng âm của AI Coach: "${engine.feedbackExplanation.textContent}"`
-);
+// ====================================================================
+// TEST SUITE 11: HIỆU ỨNG ZOOM / CHUYỂN ĐỘNG NHẸ & TÔ SÁNG VIỀN ẢNH MINH HỌA
+// ====================================================================
+console.log("\n🎬 TEST SUITE 11: Hiệu Ứng Zoom/Chuyển Động Nhẹ & Tô Sáng Viền Ảnh Minh Họa");
+
+assert(Object.keys(VOCAB_IMAGES).length === 58, `Giữ nguyên đầy đủ 58 ảnh minh họa gốc trong VOCAB_IMAGES (Thực tế: ${Object.keys(VOCAB_IMAGES).length})`);
+
+// Kiểm tra 1 câu có ảnh gốc (ví dụ: volunteer)
+const illustratedQ = IELTS_VOCAB_BANK.find(q => String(q.target_word || '').toLowerCase() === 'volunteer');
+const resolvedVolunteerUrl = engine.resolveQuestionImageUrl(illustratedQ);
+assert(Boolean(resolvedVolunteerUrl), "Giải mã chính xác đường dẫn ảnh minh họa gốc cho từ vựng ('volunteer')");
+
+// Nạp trực tiếp câu hỏi có ảnh minh họa để kiểm tra hiển thị khung ảnh, chạm phát âm & tô sáng viền
+engine.questions = [illustratedQ, ...engine.questions.slice(0, 9)];
+engine.currentIndex = 0;
+engine.loadQuestion(0);
+
+assert(engine.vocabImageContainer.style.display === 'flex' && engine.vocabImageContainer.classList.contains('gif-stage-active'), "Khung ảnh minh họa (#vocab-image.gif-stage-active) hiển thị đúng kích thước chuẩn kèm hiệu ứng zoom nhẹ và tô sáng viền");
+
+spokenReplayCalls.length = 0;
+const spokenFromTap = engine.triggerGifTapSpeak();
+assert(Boolean(spokenFromTap) && spokenReplayCalls.some(c => c.word === spokenFromTap), `Chạm vào khung ảnh phát âm ngay từ vựng "${spokenFromTap}" qua kênh Media`);
+assert(engine.vocabImageContainer.classList.contains('gif-speaking-active'), "Khung ảnh kích hoạt hiệu ứng tô sáng viền (.gif-speaking-active) khi chạm vào");
+
+// Kiểm tra tô sáng viền Xanh Ngọc khi trả lời ĐÚNG
+engine.handleAnswerSelect(illustratedQ.correct, null);
+assert(engine.vocabImageContainer.classList.contains('gif-react-correct') && engine.lastGifReactionState === 'correct_celebration', "Trả lời ĐÚNG kích hoạt tô sáng viền xanh ngọc (.gif-react-correct) trên khung ảnh");
+
+// Kiểm tra tô sáng viền Đỏ San Hô khi trả lời SAI
+engine.loadQuestion(0);
+const wrongIdxForGif = (illustratedQ.correct + 1) % 4;
+engine.handleAnswerSelect(wrongIdxForGif, null);
+assert(engine.vocabImageContainer.classList.contains('gif-react-wrong') && engine.lastGifReactionState === 'wrong_shake', "Trả lời SAI kích hoạt tô sáng viền đỏ cảnh báo (.gif-react-wrong) trên khung ảnh");
+
+// ====================================================================
+// TEST SUITE 12: ADAPTIVE NGỮ PHÁP — LÀM LẠI NGAY Ở CÂU TIẾP THEO & HIỆU ỨNG CHỮ GIẢI THÍCH KỸ
+// ====================================================================
+console.log("\n📐 TEST SUITE 12: Adaptive Ngữ Pháp (Làm Lại Ngay Câu Tiếp Theo + Hiệu Ứng Chữ Giải Thích Dễ Hiểu)");
+
+const sampleGrammarQ = toeicQuestions.find(q => q.mode === 'word_class' && q.sentence && /_{2,}/.test(q.sentence));
+const samplePrepQ = toeicQuestions.find(q => q.mode === 'preposition' && q.sentence && /_{2,}/.test(q.sentence));
+
+engine.hearts = 5;
+engine.questions = [sampleGrammarQ, samplePrepQ];
+engine.currentIndex = 0;
+engine.loadQuestion(0);
+
+// 1. Giả lập người chơi chọn SAI câu ngữ pháp số 1
+const wrongGrammarChoice = (sampleGrammarQ.correct + 1) % 4;
+engine.handleAnswerSelect(wrongGrammarChoice, null);
+
+assert(engine.feedbackGrammarCoach.style.display === 'block' && engine.feedbackGrammarCoach.innerHTML.includes('grammar-formula-pill') && engine.feedbackGrammarCoach.innerHTML.includes('g-anim-word'), "Khi làm sai ngữ pháp, Ngăn Kéo Phản Hồi hiển thị ngay hộp phân tích ngữ pháp kèm hiệu ứng chữ chạy từng từ (.g-anim-word)");
+assert(engine.feedbackExplanation.style.display === 'none' && !engine.feedbackExplanation.textContent.includes('TOEIC'), "Đã ẩn hoàn toàn khối 'TOEIC 600-650' (#feedback-explanation) để ưu tiên diện tích cho khối phân tích ngữ pháp (#feedback-grammar-coach)");
+assert(engine.questions[1] && engine.questions[1].isGrammarRedo === true && engine.questions[1].baseQuestionId === sampleGrammarQ.id, "Câu hỏi tiếp theo ngay lập tức (currentIndex + 1) được chèn là câu Làm Lại Ngữ Pháp (isGrammarRedo === true)");
+
+// 2. Bấm sang câu tiếp theo -> Phải là câu Làm Lại Ngữ Pháp kèm bảng hiệu ứng chữ giải thích chi tiết và gạch chân từ dấu hiệu
+engine.nextQuestion();
+const activeRedoQ = engine.questions[engine.currentIndex];
+assert(activeRedoQ.isGrammarRedo === true, "Khi sang câu tiếp theo, người chơi được làm lại ngay câu ngữ pháp vừa sai");
+assert(engine.adaptiveGrammarBanner.style.display === 'block' && engine.adaptiveGrammarBanner.innerHTML.includes('grammar-formula-flow') && engine.adaptiveGrammarBanner.innerHTML.includes('g-anim-word'), "Trên thẻ câu hỏi Làm Lại Ngữ Pháp hiển thị bảng công thức 3 bước và hiệu ứng chữ giải thích kỹ (.adaptive-grammar-banner)");
+assert(engine.questionMainText.innerHTML.includes('grammar-cue-word') && engine.questionMainText.innerHTML.includes('grammar-redo-slot'), "Câu văn hiển thị hiệu ứng gạch chân sáng ở các từ dấu hiệu ngữ pháp (.grammar-cue-word) và gợi ý từ loại ngay tại chỗ trống (.grammar-redo-slot)");
 
 console.log("\n======================================================================");
 console.log(`🏁 KẾT QUẢ: ${passed}/${total} BÀI KIỂM ĐỊNH ADAPTIVE & TOEIC ĐẠT TUYỆT ĐỐI!`);
 console.log("======================================================================");
 clearInterval(engine.timerInterval);
 process.exit(0);
-
-
 
